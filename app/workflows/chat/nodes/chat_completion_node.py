@@ -16,7 +16,7 @@ class ChatCompletionNode(AgentNode):
 
     def get_agent_config(self) -> AgentConfig:
         return AgentConfig(
-            system_prompt="You are a tutor teaching people that are new to programming. Ask questions that help the user get a better understanding of the current subject they are struggling with.",
+            instructions="You are a tutor teaching people that are new to programming. Ask questions that help the user get a better understanding of the current subject they are struggling with.",
             output_type=str,
             deps_type=None,
             model_provider=ModelProvider.OPENAI,

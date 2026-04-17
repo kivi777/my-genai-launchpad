@@ -20,7 +20,7 @@ class GenerationNode(AgentNode):
 
     def get_agent_config(self) -> AgentConfig:
         return AgentConfig(
-            system_prompt="You are a helpful assistant that can answer questions and provide information based on the retrieved documents.",
+            instructions="You are a helpful assistant that can answer questions and provide information based on the retrieved documents.",
             output_type=GenerationNode.OutputType,
             deps_type=GenerationNode.DepsType,
             model_provider=ModelProvider.OPENAI,
@@ -33,8 +33,7 @@ class GenerationNode(AgentNode):
             context=retrieval_results.results,
         )
 
-        # Register the dynamic system prompt function
-        @self.agent.system_prompt
+        @self.agent.instructions
         def add_rag_context(ctx: RunContext[GenerationNode.DepsType]) -> str:
             return f"Here are the documents I found for your query:\n{ctx.deps.context.model_dump_json(indent=2)}"
 
