@@ -1,18 +1,15 @@
 import json
 import logging
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root / "app"))
-sys.path.append(str(project_root))
 
-load_dotenv(project_root / "app/.env")
+load_dotenv(project_root / ".env")
 
 import nest_asyncio
-from workflows.workflow_registry import WorkflowRegistry
+from launchpad.workflows.workflow_registry import WorkflowRegistry
 
 logging.basicConfig(level=logging.INFO)
 nest_asyncio.apply()
@@ -25,7 +22,7 @@ retrieve. Without documents, the retrieval step returns empty results.
 """
 
 event_path = (
-    project_root / "app/workflows/pgvector_rag/request_examples/query.json"
+    project_root / "app/launchpad/workflows/examples/pgvector_rag/request_examples/query.json"
 )
 with open(event_path) as f:
     event = json.load(f)

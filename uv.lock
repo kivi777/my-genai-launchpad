@@ -902,7 +902,7 @@ wheels = [
 [[package]]
 name = "genai-launchpad"
 version = "1.0.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "alembic" },
     { name = "celery" },

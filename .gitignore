@@ -90,10 +90,10 @@ target/
 .venv/
 
 # Alembic migrations
-app/alembic/versions/*
-!app/alembic/versions/.gitkeep
+app/launchpad/alembic/versions/*
+!app/launchpad/alembic/versions/.gitkeep
 
 # Launchpad playground
 playground/*.png
 
-app/google-service-account.json
+app/launchpad/google-service-account.json

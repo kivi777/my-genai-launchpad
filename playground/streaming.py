@@ -1,18 +1,15 @@
 import asyncio
 import json
 import logging
-import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root / "app"))
-sys.path.append(str(project_root))
 
-load_dotenv(project_root / "app/.env")
+load_dotenv(project_root / ".env")
 
-from workflows.workflow_registry import WorkflowRegistry
+from launchpad.workflows.workflow_registry import WorkflowRegistry
 
 logging.basicConfig(level=logging.INFO)
 
@@ -26,7 +23,7 @@ asyncio event loop.
 
 async def main() -> None:
     event_path = (
-        project_root / "app/workflows/streaming/request_examples/chat.json"
+        project_root / "app/launchpad/workflows/examples/streaming/request_examples/chat.json"
     )
     with open(event_path) as f:
         event = json.load(f)

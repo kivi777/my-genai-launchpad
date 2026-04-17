@@ -4,15 +4,18 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-WORKDIR /app
+WORKDIR /workspace
 
-ADD pyproject.toml .
-RUN uv pip install --system -r pyproject.toml
+COPY pyproject.toml uv.lock ./
+COPY app/ ./app/
 
-ADD app/ /app
+# Install deps + the launchpad package itself (editable) into the
+# system interpreter. Editable install means code edits picked up by a
+# volume mount take effect without a rebuild.
+RUN uv pip install --system -e .
 
-RUN chmod +x /app/start.sh
+RUN chmod +x /workspace/app/launchpad/start.sh
 
 EXPOSE 8080
 
-CMD ["/app/start.sh"]
+CMD ["/workspace/app/launchpad/start.sh"]

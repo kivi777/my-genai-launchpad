@@ -11,7 +11,7 @@ services:
       - "127.0.0.1:8080:8080"
     restart: always
     volumes:
-      - ./../app/:/app
+      - ./../app:/workspace/app
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
       - DATABASE_HOST=${POSTGRES_HOST}
@@ -45,7 +45,7 @@ services:
       - api
     restart: always
     volumes:
-      - ./../app:/app
+      - ./../app:/workspace/app
     environment:
       - PROJECT_NAME=${PROJECT_NAME}
       - DATABASE_HOST=${POSTGRES_HOST}
