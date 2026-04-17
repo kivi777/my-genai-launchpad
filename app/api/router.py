@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from api import events
 from api import openai
+from workflows.chat.routes import router as chat_router
 
 """
 API Router Module
@@ -14,3 +15,4 @@ router = APIRouter()
 
 router.include_router(events.router, prefix="/events", tags=["events"])
 router.include_router(openai.router, prefix="/v1", tags=["openai"])
+router.include_router(chat_router, prefix="/chat", tags=["chat"])

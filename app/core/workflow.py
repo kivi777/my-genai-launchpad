@@ -144,33 +144,48 @@ class Workflow(ABC):
         """
         return node_class()
 
-    def run(self, event: Any) -> TaskContext:
-        """Executes the workflow for a given event synchronously.
+    def run(
+        self, event: Any = None, *, context: TaskContext = None
+    ) -> TaskContext:
+        """Executes the workflow for a given event or existing context synchronously.
 
         Use this when you want to run the workflow in a new event loop,
         for example in a Celery background task or a plain Python script.
 
         Args:
-            event: The event data to process through the workflow.
+            event: Raw event data to process. Required if context is not provided.
+            context: Existing TaskContext to continue with. When provided, event
+                parsing is skipped and the workflow reuses the shared context.
+                Used for workflow composition where a parent workflow hands its
+                context to a child workflow.
 
         Returns:
             TaskContext containing the results of workflow execution.
         """
-        return asyncio.run(self.__run(event))
+        if context is None and event is None:
+            raise ValueError("Either event or context must be provided")
+        return asyncio.run(self.__run(event, context))
 
-    async def run_async(self, event: Any) -> TaskContext:
-        """Executes the workflow for a given event asynchronously.
+    async def run_async(
+        self, event: Any = None, *, context: TaskContext = None
+    ) -> TaskContext:
+        """Executes the workflow for a given event or existing context asynchronously.
 
         Use this when you want to run the workflow in an active event loop,
-        for example in a FastAPI endpoint or Jupyter Notebook.
+        for example in a FastAPI endpoint or from within a node that delegates
+        to a child workflow.
 
         Args:
-            event: The event data to process through the workflow.
+            event: Raw event data to process. Required if context is not provided.
+            context: Existing TaskContext to continue with. When provided, event
+                parsing is skipped and the workflow reuses the shared context.
 
         Returns:
             TaskContext containing the results of workflow execution.
         """
-        return await self.__run(event)
+        if context is None and event is None:
+            raise ValueError("Either event or context must be provided")
+        return await self.__run(event, context)
 
     async def run_stream_async(self, event: Any) -> AsyncIterator[Dict[str, Any]]:
         """Executes the workflow with streaming support, yielding events as they occur.
@@ -253,11 +268,16 @@ class Workflow(ABC):
                 yield {"type": "error", "error": str(e)}
                 raise
 
-    async def __run(self, event: Any) -> TaskContext:
-        """Executes the workflow for a given event.
+    async def __run(
+        self, event: Any = None, existing_context: TaskContext = None
+    ) -> TaskContext:
+        """Executes the workflow for a given event or existing context.
 
         Args:
-            event: The event to process through the workflow
+            event: The event to process. Ignored if existing_context is provided.
+            existing_context: Existing TaskContext to continue with. When present,
+                the workflow skips event parsing, resets should_stop, and preserves
+                the parent's node registry for restoration on return.
 
         Returns:
             TaskContext containing the results of workflow execution
@@ -265,15 +285,27 @@ class Workflow(ABC):
         Raises:
             Exception: Any exception that occurs during workflow execution
         """
-        task_context = TaskContext(event=event)
-
         with self._observation_context(self.__class__.__name__) as workflow_span:
             try:
-                # Parse the raw event to the Pydantic schema defined in the WorkflowSchema
-                task_context.event = self.workflow_schema.event_schema(**event)
-                workflow_span.update(input=event)
+                if existing_context is not None:
+                    task_context = existing_context
+                    task_context.should_stop = False
+                    workflow_span.update(
+                        input=task_context.model_dump(exclude={"metadata": {"nodes"}})
+                    )
+                else:
+                    task_context = TaskContext(event=event)
+                    # Parse the raw event to the Pydantic schema defined in the WorkflowSchema
+                    task_context.event = self.workflow_schema.event_schema(**event)
+                    workflow_span.update(input=event)
 
+                if self.enable_tracing and self.langfuse:
+                    task_context.trace_id = self.langfuse.get_current_trace_id()
+
+                # Save parent's nodes registry so nested workflows don't clobber it
+                parent_nodes = task_context.metadata.get("nodes")
                 task_context.metadata["nodes"] = self.nodes
+
                 current_node_class = self.workflow_schema.start
 
                 while current_node_class:
@@ -283,25 +315,33 @@ class Workflow(ABC):
 
                     current_node = self.nodes[current_node_class].node
                     node_name = current_node_class.__name__
+                    node_instance = None
 
-                    with self._observation_context(node_name) as node_span:
-                        node_span.update(
-                            input=task_context.model_dump(
-                                exclude={"metadata": {"nodes"}}
+                    try:
+                        with self._observation_context(node_name) as node_span:
+                            node_span.update(
+                                input=task_context.model_dump(
+                                    exclude={"metadata": {"nodes"}}
+                                )
                             )
-                        )
 
-                        with self.node_context(node_name):
-                            if not issubclass(current_node, BaseRouter):
-                                task_context = await current_node(
-                                    task_context=task_context
-                                ).process(task_context)
+                            with self.node_context(node_name):
+                                if not issubclass(current_node, BaseRouter):
+                                    node_instance = current_node(
+                                        task_context=task_context
+                                    )
+                                    task_context = await node_instance.process(
+                                        task_context
+                                    )
 
-                        node_span.update(
-                            output=task_context.model_dump(
-                                include={"nodes": {node_name}}
+                            node_span.update(
+                                output=task_context.model_dump(
+                                    include={"nodes": {node_name}}
+                                )
                             )
-                        )
+                    finally:
+                        if node_instance is not None:
+                            await node_instance.cleanup()
 
                     current_node_class = await self._get_next_node_class(
                         current_node_class, task_context
@@ -310,7 +350,12 @@ class Workflow(ABC):
                 workflow_span.update(
                     output=task_context.model_dump(exclude={"metadata": {"nodes"}})
                 )
-                task_context.metadata.pop("nodes")
+
+                if parent_nodes is not None:
+                    task_context.metadata["nodes"] = parent_nodes
+                else:
+                    task_context.metadata.pop("nodes", None)
+
                 return task_context
 
             except Exception as e:

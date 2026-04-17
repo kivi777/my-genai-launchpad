@@ -56,11 +56,14 @@ class PromptManager:
         return cls._env
 
     @staticmethod
-    def get_prompt(template: str, **kwargs) -> str:
+    def get_prompt(template: str, prompts_dir=None, **kwargs) -> str:
         """Loads and renders a prompt template with provided variables.
 
         Args:
             template: Name of the template file (without .j2 extension)
+            prompts_dir: Optional path to a custom prompts directory.
+                         When provided, loads from this directory instead
+                         of the default app/prompts/ location.
             **kwargs: Variables to use in template rendering
 
         Returns:
@@ -70,7 +73,13 @@ class PromptManager:
             ValueError: If template rendering fails
             FileNotFoundError: If template file doesn't exist
         """
-        env = PromptManager._get_env()
+        if prompts_dir is not None:
+            env = Environment(
+                loader=FileSystemLoader(prompts_dir),
+                undefined=StrictUndefined,
+            )
+        else:
+            env = PromptManager._get_env()
         template_path = f"{template}.j2"
         with open(env.loader.get_source(env, template_path)[1]) as file:
             post = frontmatter.load(file)

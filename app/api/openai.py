@@ -1,9 +1,9 @@
 from fastapi import APIRouter
 from starlette.responses import StreamingResponse
 
-from schemas.openai_schema import OpenAIChatSchema
+from workflows.streaming.schema import OpenAIChatSchema
 from utils.event_stream_generator import event_stream_generator
-from workflows.example_streaming_workflow import ExampleStreamingWorkflow
+from workflows.streaming.workflow import ExampleStreamingWorkflow
 
 router = APIRouter()
 

@@ -39,6 +39,10 @@ class TaskContext(BaseModel):
         default=False,
         description="Flag indicating whether the workflow should stop execution",
     )
+    trace_id: str | None = Field(
+        default=None,
+        description="Langfuse trace ID for this workflow run, captured on entry when tracing is enabled",
+    )
 
     def update_node(self, node_name: str, **kwargs):
         self.nodes[node_name] = {**self.nodes.get(node_name, {}), **kwargs}

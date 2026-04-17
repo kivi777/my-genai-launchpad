@@ -87,3 +87,14 @@ class Node(ABC):
             2. Store results using the save_output method
         """
         pass
+
+    async def cleanup(self) -> None:
+        """Releases any per-instance resources held by the node.
+
+        Called after the node finishes processing, including when an
+        exception propagates out. Override this when the node holds
+        clients or connections that need explicit teardown between runs
+        (for example, when the same node type is re-entered by a child
+        workflow during composition).
+        """
+        pass
