@@ -3,6 +3,7 @@ import json
 import logging
 from pathlib import Path
 
+import nest_asyncio
 from dotenv import load_dotenv
 
 project_root = Path(__file__).parent.parent
@@ -12,6 +13,7 @@ load_dotenv(project_root / ".env")
 from launchpad.workflows.workflow_registry import WorkflowRegistry
 
 logging.basicConfig(level=logging.INFO)
+nest_asyncio.apply()
 
 """
 Playground for the streaming example workflow.
