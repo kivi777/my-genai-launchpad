@@ -49,6 +49,7 @@ They show how to build Launchpad workflows with nodes, routers, schemas, prompts
 Current examples:
 
 - `quickstart`: customer-care workflow with concurrent analysis, routing, and Jinja2 prompts.
+- `nested_customer_care`: minimal customer-care workflow that delegates reply drafting to a child workflow.
 - `streaming`: server-sent event streaming with text and structured outputs.
 - `langfuse_tracing`: multi-node moderation workflow with Langfuse tracing.
 - `pgvector_rag`: retrieval-augmented generation using PostgreSQL and pgvector.
@@ -59,6 +60,7 @@ After installation, use the playground scripts to run examples locally without g
 
 ```bash
 uv run playground/quickstart.py
+uv run playground/nested_customer_care.py
 uv run playground/streaming.py
 uv run playground/langfuse_tracing.py
 uv run playground/pgvector_rag.py
