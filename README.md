@@ -2,7 +2,7 @@
 
 GenAI Launchpad is a Docker-based starter kit for building production-ready GenAI applications.
 
-It includes FastAPI, Celery, PostgreSQL with vector support, Redis, Caddy, Supabase, workflow orchestration, background processing, streaming, tracing, and example AI workflows.
+It includes FastAPI, Celery, PostgreSQL with vector support, Redis, optional Caddy and Supabase services, workflow orchestration, background processing, streaming, tracing, and example AI workflows.
 
 ## Overview
 
@@ -38,7 +38,12 @@ pyproject.toml          Python project configuration
 
 Start with the [installation guide](https://launchpad.datalumina.com/docs/getting-started/installation).
 
-It covers environment variables, Docker services, the Python environment, `uv sync`, database migrations, and Supabase Studio. Complete those steps before running the playground examples.
+It covers environment variables, Docker services, the Python environment, `uv sync`, and database migrations. Complete those steps before running the playground examples.
+
+There are two environment files on purpose:
+
+- `.env` at the repo root is for local development with your local Python environment, including playground scripts, unit tests, notebooks, and one-off `uv run ...` commands.
+- `docker/.env` is for Docker Compose, the fully containerized Launchpad stack, the database, and optional Supabase services. It is much larger mostly because self-hosted Supabase requires many settings even though Supabase is excluded by default.
 
 ## Workflows
 
