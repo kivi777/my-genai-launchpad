@@ -749,7 +749,7 @@ wheels = [
 
 [[package]]
 name = "genai-launchpad"
-version = "1.0.0"
+version = "3.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
