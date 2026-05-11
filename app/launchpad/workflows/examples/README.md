@@ -7,7 +7,7 @@ Each subdirectory is self-contained (`schema.py`, `workflow.py`, `nodes/`, `requ
 | Example | Demonstrates | Playground |
 | --- | --- | --- |
 | [`quickstart/`](./quickstart/) | Concurrent analysis + routing + Jinja2 prompts on a customer-care ticket | `uv run playground/quickstart.py` |
-| [`nested_customer_care/`](./nested_customer_care/) | Minimal nested workflow composition with a parent node calling a child workflow | `uv run playground/nested_customer_care.py` |
+| [`nested_workflow/`](./nested_workflow/) | Minimal nested workflow composition with a parent node calling a child workflow | `uv run playground/nested_workflow.py` |
 | [`streaming/`](./streaming/) | SSE streaming through `run_stream_async`, text + structured output | `uv run playground/streaming.py` |
 | [`langfuse_tracing/`](./langfuse_tracing/) | Enabling Langfuse tracing on a multi-node moderation pipeline | `uv run playground/langfuse_tracing.py` |
 | [`pgvector_rag/`](./pgvector_rag/) | Retrieval-augmented generation against `pgvector` | `uv run playground/pgvector_rag.py` |

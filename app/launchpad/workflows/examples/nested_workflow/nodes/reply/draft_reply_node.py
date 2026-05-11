@@ -2,8 +2,8 @@ from pydantic import BaseModel
 
 from launchpad.core.nodes.base import Node
 from launchpad.core.task import TaskContext
-from launchpad.workflows.examples.nested_customer_care.schema import (
-    NestedCustomerCareEventSchema,
+from launchpad.workflows.examples.nested_workflow.schema import (
+    NestedWorkflowEventSchema,
 )
 
 
@@ -23,9 +23,9 @@ class DraftReplyNode(Node):
         )
         return task_context
 
-    def _event(self, task_context: TaskContext) -> NestedCustomerCareEventSchema:
+    def _event(self, task_context: TaskContext) -> NestedWorkflowEventSchema:
         return (
             task_context.event
-            if isinstance(task_context.event, NestedCustomerCareEventSchema)
-            else NestedCustomerCareEventSchema(**task_context.event)
+            if isinstance(task_context.event, NestedWorkflowEventSchema)
+            else NestedWorkflowEventSchema(**task_context.event)
         )

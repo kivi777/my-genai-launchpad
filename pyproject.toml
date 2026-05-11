@@ -39,3 +39,8 @@ dev = [
 
 [tool.ruff]
 exclude = [".venv", "app/launchpad/core/commands", "app/launchpad/alembic", ".sh"]
+
+[tool.pyright]
+extraPaths = ["app"]
+venvPath = "."
+venv = ".venv"

@@ -2,7 +2,7 @@ from pydantic import BaseModel
 
 from launchpad.core.nodes.base import Node
 from launchpad.core.task import TaskContext
-from launchpad.workflows.examples.nested_customer_care.nodes.reply.draft_reply_node import (
+from launchpad.workflows.examples.nested_workflow.nodes.reply.draft_reply_node import (
     DraftReplyNode,
 )
 

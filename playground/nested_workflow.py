@@ -16,12 +16,12 @@ nest_asyncio.apply()
 
 event_path = (
     project_root
-    / "app/launchpad/workflows/examples/nested_customer_care/request_examples/billing_question.json"
+    / "app/launchpad/workflows/examples/nested_workflow/request_examples/billing_question.json"
 )
 with open(event_path) as f:
     event = json.load(f)
 
-workflow = WorkflowRegistry.NESTED_CUSTOMER_CARE.value()
+workflow = WorkflowRegistry.NESTED_WORKFLOW.value()
 output = workflow.run(event)
 
 print(output.model_dump_json(indent=2))

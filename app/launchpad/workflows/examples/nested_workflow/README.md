@@ -1,4 +1,4 @@
-# Nested Customer-Care Workflow
+# Nested Workflow
 
 Deterministic customer-care example that shows one Launchpad workflow calling another workflow with the same `TaskContext`.
 
@@ -22,9 +22,9 @@ SendReplyNode
 ## Run It
 
 ```bash
-uv run playground/nested_customer_care.py
+uv run playground/nested_workflow.py
 ```
 
 The script loads `request_examples/billing_question.json` by default.
 
-Registered as `WorkflowRegistry.NESTED_CUSTOMER_CARE`.
+Registered as `WorkflowRegistry.NESTED_WORKFLOW`.
