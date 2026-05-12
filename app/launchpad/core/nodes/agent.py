@@ -6,10 +6,8 @@ from typing import Type, Optional, Union, Any, List
 
 import boto3
 from dotenv import load_dotenv
-from fastmcp.server.auth.providers.azure import AzureProvider
 from google.oauth2 import service_account
 from httpx import AsyncClient
-from openai import AsyncAzureOpenAI
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models import Model
@@ -17,13 +15,13 @@ from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelName
 from pydantic_ai.models.bedrock import BedrockConverseModel, BedrockModelName
 from pydantic_ai.models.gemini import GeminiModelName
 from pydantic_ai.models.google import GoogleModel
-from pydantic_ai.models.mistral import MistralModel
 from pydantic_ai.models.openai import (
     OpenAIModelName,
     OpenAIChatModel,
     OpenAIResponsesModel,
 )
 from pydantic_ai.providers.anthropic import AnthropicProvider
+from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.bedrock import BedrockProvider
 from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.providers.ollama import OllamaProvider
@@ -43,7 +41,6 @@ class ModelProvider(str, Enum):
     BEDROCK = "bedrock"
     GOOGLE_GEMINI = "google"
     GOOGLE_VERTEX_AI = "google_vertex_ai"
-    MISTRAL = "mistral"
 
 
 @dataclass
@@ -118,22 +115,20 @@ class AgentNode(Node, ABC):
                 return self.__get_google_gemini_model(model_name)
             case provider.GOOGLE_VERTEX_AI.value:
                 return self.__get_google_vertex_ai_model(model_name)
-            case provider.MISTRAL.value:
-                return self.__get_mistral_model(model_name)
+        return self.__get_openai_model(model_name)
 
     def __get_openai_model(self, model_name) -> Model:
         return OpenAIResponsesModel(model_name=model_name)
 
     def __get_azure_openai_model(self, model_name) -> Model:
-        client = AsyncAzureOpenAI(
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-03-01-preview")
+        provider = AzureProvider(
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
         )
-        if not model_name:
-            model_name = "gpt-5-mini"
-
         return OpenAIResponsesModel(
             model_name=model_name,
-            provider=AzureProvider(),
+            provider=provider,
         )
 
     def __get_anthropic_model(self, model_name: AnthropicModelName) -> Model:
@@ -175,7 +170,7 @@ class AgentNode(Node, ABC):
 
     def __get_google_vertex_ai_model(self, model_name: str) -> Model:
         credentials = service_account.Credentials.from_service_account_file(
-            filename=os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+            filename=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", ""),
             scopes=["https://www.googleapis.com/auth/cloud-platform"],
         )
         provider = GoogleProvider(
@@ -186,6 +181,3 @@ class AgentNode(Node, ABC):
             model_name=model_name,
             provider=provider,
         )
-
-    def __get_mistral_model(self, model_name: str) -> Model:
-        return MistralModel(model_name=model_name)
