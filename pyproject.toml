@@ -1,6 +1,6 @@
 [project]
 name = "genai-launchpad"
-version = "3.4.0"
+version = "3.4.1"
 description = "GenAI Launchpad by Datalumina"
 requires-python = "==3.13.13"
 dependencies = [
@@ -12,7 +12,7 @@ dependencies = [
     "langfuse>=3.10.5,<4",
     "psycopg2-binary>=2.9.11",
     "pydantic>=2.13.1",
-    "pydantic-ai>=1.80",
+    "pydantic-ai>=1.94",
     "python-dotenv>=1.2.2",
     "python-frontmatter>=1.1.0",
     "redis>=7.4.0",
