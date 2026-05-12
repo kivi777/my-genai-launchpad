@@ -34,7 +34,7 @@ Use Jinja2 templates via `launchpad.services.prompt_loader.PromptManager`. Two l
 
 ## LLM providers
 
-Switch providers by changing `model_provider` in `AgentConfig`. Supported: OpenAI, Azure OpenAI, Anthropic, Google Gemini, Vertex AI, Bedrock, Mistral, Ollama. Don't hardcode SDK clients in nodes — go through `AgentNode`.
+Switch providers by changing `model_provider` in `AgentConfig`. Supported: OpenAI, Azure OpenAI, Anthropic, Google Gemini, Vertex AI, Bedrock, Ollama. Don't hardcode SDK clients in nodes — go through `AgentNode`.
 
 ## Dependencies — minimise
 
