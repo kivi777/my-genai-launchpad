@@ -132,17 +132,6 @@ class Workflow(ABC):
                     nodes[connected_node] = connected_node_config
         return nodes
 
-    @staticmethod
-    def _instantiate_node(node_class: Type[Node]) -> Node:
-        """Creates an instance of a node class.
-
-        Args:
-            node_class: The class of the node to instantiate
-
-        Returns:
-            An instance of the specified node class
-        """
-        return node_class()
 
     def run(
         self, event: Any = None, *, context: TaskContext = None
