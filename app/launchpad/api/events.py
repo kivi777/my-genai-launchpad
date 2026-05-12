@@ -41,8 +41,7 @@ def handle_event(
         session=session,
         model=Event,
     )
-    raw_event = data.model_dump(mode="json")
-    event = Event(data=raw_event, workflow_type=get_workflow_type())
+    event = Event(data=data, workflow_type=get_workflow_type())
     repository.create(obj=event)
 
     # Queue processing task
