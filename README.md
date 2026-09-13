@@ -1,5 +1,7 @@
 # GenAI Launchpad
 
+[![By Datalumina](https://img.shields.io/badge/by-Datalumina-111827)](https://github.com/datalumina)
+
 GenAI Launchpad is a Docker-based starter kit for building production-ready GenAI applications.
 
 It includes FastAPI, Celery, PostgreSQL with vector support, Redis, optional Caddy and Supabase services, workflow orchestration, background processing, streaming, tracing, and example AI workflows.
