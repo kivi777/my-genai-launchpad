@@ -61,6 +61,8 @@ Current examples:
 - `langfuse_tracing`: multi-node moderation workflow with Langfuse tracing.
 - `pgvector_rag`: retrieval-augmented generation using PostgreSQL and pgvector.
 
+The [Jev decision workflow](app/launchpad/workflows/decision/README.md) demonstrates the reusable `DecisionNode` with a typed team choice and confidence.
+
 ## Playground
 
 After installation, use the playground scripts to run examples locally without going through the API.
@@ -71,6 +73,7 @@ uv run playground/nested_workflow.py
 uv run playground/streaming.py
 uv run playground/langfuse_tracing.py
 uv run playground/pgvector_rag.py
+uv run playground/decision.py
 ```
 
 Each script loads an example request from the matching workflow directory.

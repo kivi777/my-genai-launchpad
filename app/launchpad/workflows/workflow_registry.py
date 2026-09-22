@@ -1,5 +1,6 @@
 from enum import Enum
 
+from launchpad.workflows.decision.workflow import DecisionWorkflow
 from launchpad.workflows.examples.streaming.workflow import ExampleStreamingWorkflow
 from launchpad.workflows.examples.quickstart.workflow import CustomerCareWorkflow
 from launchpad.workflows.examples.langfuse_tracing.workflow import (
@@ -12,6 +13,7 @@ from launchpad.workflows.examples.pgvector_rag.workflow import RagExampleWorkflo
 
 
 class WorkflowRegistry(Enum):
+    DECISION = DecisionWorkflow
     STREAMING = ExampleStreamingWorkflow
     QUICKSTART = CustomerCareWorkflow
     LANGFUSE_TRACING = LangfuseTracingWorkflow
