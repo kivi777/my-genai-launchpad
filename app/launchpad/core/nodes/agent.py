@@ -7,23 +7,23 @@ from typing import Type, Optional, Union, Any, List
 import boto3
 from dotenv import load_dotenv
 from google.oauth2 import service_account
-from httpx import AsyncClient
 from pydantic import BaseModel
-from pydantic_ai import Agent
+from pydantic_ai import Agent, AgentRetries
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelName
 from pydantic_ai.models.bedrock import BedrockConverseModel, BedrockModelName
-from pydantic_ai.models.gemini import GeminiModelName
-from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.google import GoogleModel, GoogleModelName
 from pydantic_ai.models.openai import (
     OpenAIModelName,
     OpenAIChatModel,
     OpenAIResponsesModel,
 )
+from pydantic_ai.models.typesafe import TypeSafeModel, TypeSafeModelName
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.bedrock import BedrockProvider
 from pydantic_ai.providers.google import GoogleProvider
+from pydantic_ai.providers.google_cloud import GoogleCloudProvider
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.settings import ModelSettings
 
@@ -41,23 +41,29 @@ class ModelProvider(str, Enum):
     BEDROCK = "bedrock"
     GOOGLE_GEMINI = "google"
     GOOGLE_VERTEX_AI = "google_vertex_ai"
+    TYPESAFE = "typesafe"
 
 
 @dataclass
 class AgentConfig:
     model_provider: ModelProvider
     model_name: Union[
-        OpenAIModelName, AnthropicModelName, GeminiModelName, BedrockModelName
+        OpenAIModelName,
+        AnthropicModelName,
+        GoogleModelName,
+        BedrockModelName,
+        TypeSafeModelName,
     ]
     output_type: Any = str
     instructions: Optional[str] = None
     deps_type: Optional[Type[Any]] = None
     name: str | None = None
     model_settings: ModelSettings | None = None
-    retries: int = 1
-    output_retries: int | None = None
+    # An int sets both budgets; {"tools": n, "output": n} sets them apart.
+    retries: int | AgentRetries = 1
     tools: List = field(default_factory=list)
-    builtin_tools: List = field(default_factory=list)
+    # Native tools, thinking, web search, etc. See pydantic_ai.capabilities.
+    capabilities: List = field(default_factory=list)
     instrument: bool = True
 
 
@@ -71,7 +77,6 @@ class AgentNode(Node, ABC):
     def __init__(self, task_context: TaskContext = None):
         super().__init__(task_context=task_context)
 
-        self.__async_client = AsyncClient()
         agent_wrapper = self.get_agent_config()
         self.agent = Agent(
             model=self.__get_model_instance(
@@ -83,11 +88,10 @@ class AgentNode(Node, ABC):
             name=agent_wrapper.name,
             model_settings=agent_wrapper.model_settings,
             retries=agent_wrapper.retries,
-            output_retries=agent_wrapper.output_retries,
             tools=agent_wrapper.tools,
-            builtin_tools=agent_wrapper.builtin_tools,
-            instrument=agent_wrapper.instrument,
+            capabilities=agent_wrapper.capabilities,
         )
+        self.agent.instrument = agent_wrapper.instrument
 
         self.agent.instrument_all()
 
@@ -115,6 +119,8 @@ class AgentNode(Node, ABC):
                 return self.__get_google_gemini_model(model_name)
             case provider.GOOGLE_VERTEX_AI.value:
                 return self.__get_google_vertex_ai_model(model_name)
+            case provider.TYPESAFE.value:
+                return TypeSafeModel(model_name)
         return self.__get_openai_model(model_name)
 
     def __get_openai_model(self, model_name) -> Model:
@@ -124,7 +130,7 @@ class AgentNode(Node, ABC):
         provider = AzureProvider(
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-04-01-preview"),
         )
         return OpenAIResponsesModel(
             model_name=model_name,
@@ -134,7 +140,7 @@ class AgentNode(Node, ABC):
     def __get_anthropic_model(self, model_name: AnthropicModelName) -> Model:
         return AnthropicModel(
             model_name=model_name,
-            provider=AnthropicProvider(http_client=self.__async_client),
+            provider=AnthropicProvider(),
         )
 
     def __get_ollama_model(self, model_name: str) -> Model:
@@ -173,7 +179,7 @@ class AgentNode(Node, ABC):
             filename=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", ""),
             scopes=["https://www.googleapis.com/auth/cloud-platform"],
         )
-        provider = GoogleProvider(
+        provider = GoogleCloudProvider(
             credentials=credentials,
             location=os.getenv("GOOGLE_VERTEX_AI_LOCATION", "europe-west1"),
         )

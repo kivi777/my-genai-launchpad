@@ -15,7 +15,8 @@ logging.basicConfig(level=logging.INFO)
 nest_asyncio.apply()
 
 event_path = (
-    project_root / "app/launchpad/workflows/decision/request_examples/ticket.json"
+    project_root
+    / "app/launchpad/workflows/examples/decision/request_examples/ticket.json"
 )
 event = json.loads(event_path.read_text())
 output = WorkflowRegistry.DECISION.value().run(event)

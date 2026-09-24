@@ -1,6 +1,6 @@
 from enum import Enum
 
-from launchpad.workflows.decision.workflow import DecisionWorkflow
+from launchpad.workflows.examples.decision.workflow import DecisionWorkflow
 from launchpad.workflows.examples.streaming.workflow import ExampleStreamingWorkflow
 from launchpad.workflows.examples.quickstart.workflow import CustomerCareWorkflow
 from launchpad.workflows.examples.langfuse_tracing.workflow import (

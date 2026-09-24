@@ -20,21 +20,26 @@ of the model's probabilities.
 
 ## How the node works
 
-`DecisionNode` mirrors `AgentNode`: implement `get_decision_config()`, define a
-Pydantic `OutputType`, and implement `process()` using `save_output()`.
-Call `await self.decide(state)` with text or a Pydantic model. The result is the
-SDK's Pydantic `SystemOneResponse`, preserving answers, probabilities, and usage.
-The async client closes after each call, including on failure.
+`DecisionNode` is an `AgentNode` that runs on
+[PydanticAI's TypeSafe model](https://pydantic.dev/docs/ai/models/typesafe/)
+(`ModelProvider.TYPESAFE`). Implement `get_agent_config()` returning a
+`DecisionConfig`, define a Pydantic `OutputType`, and implement `process()`
+using `self.agent.run(...)` and `save_output()`.
 
-`DecisionConfig` accepts Jev's three native question types:
+Jev does not generate text. The prompt is the text being judged, and the
+fields of `output_type` are the questions. The field type sets the kind of
+question:
 
-- `Choice`: select an option from a defined set.
-- `Score`: evaluate state against an ordered rubric.
-- `Noul`: return a probability for a yes/no question.
+- `Enum` or `Literal`: pick one option. Describe options with
+  `UseEnumMemberDocstrings` and a docstring under each member.
+- `bool`: yes or no.
+- `float` with `ge=0, le=1`: the probability itself.
+- `IntEnum` rubric with a docstring per level: a score.
 
-Read `response.choices[name]`, `response.scores[name]`, or `response.nouls[name]`
-and map the fields your workflow needs into its `OutputType`. See the
-[official SDK documentation](https://docs.typesafe.ai/sdk/python) for the API.
+Put the question in the field `description`. Read the confidence per field
+from `result.response.provider_details["confidence"]`. See the
+[PydanticAI TypeSafe docs](https://pydantic.dev/docs/ai/models/typesafe/) for
+all supported types, thresholds, tools, and limits.
 
 ## What this example does
 
@@ -42,7 +47,7 @@ The registered `DECISION` workflow contains one node, `DecideTeamNode`:
 
 1. Receive a `TicketEvent` containing a support message.
 2. Ask Jev which team should handle it: `billing`, `technical`, or `other`.
-3. Validate the selected team against the `Team` enum and constrain confidence
+3. Read the selected `Team` and Jev's confidence for that field, constrained
    to 0–1.
 4. Save that output in `TaskContext.nodes["DecideTeamNode"]`.
 
@@ -78,5 +83,6 @@ Edit `request_examples/ticket.json` to try a different message. The playground
 loads that file and runs the workflow locally without API or Celery services.
 
 The model defaults to `jev-1.13.0`; override `model_name` in `DecisionConfig` to
-change it. Credentials are resolved by the SDK from the environment.
+change it. Tune thresholds with `model_settings=TypeSafeModelSettings(...)`.
+PydanticAI reads `TYPESAFE_API_KEY` from the environment.
 For Docker, set the key in `docker/.env` and rebuild the API and worker services.
