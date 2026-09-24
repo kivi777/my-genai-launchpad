@@ -60,8 +60,7 @@ Current examples:
 - `streaming`: server-sent event streaming with text and structured outputs.
 - `langfuse_tracing`: multi-node moderation workflow with Langfuse tracing.
 - `pgvector_rag`: retrieval-augmented generation using PostgreSQL and pgvector.
-
-The [Jev decision workflow](app/launchpad/workflows/decision/README.md) demonstrates the reusable `DecisionNode` with a typed team choice and confidence.
+- `decision`: typed support-ticket routing with confidence, using `DecisionNode` and TypeSafe's Jev.
 
 ## Playground
 

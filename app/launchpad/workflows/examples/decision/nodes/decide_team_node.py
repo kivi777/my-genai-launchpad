@@ -5,7 +5,7 @@ from pydantic_ai import UseEnumMemberDocstrings
 
 from launchpad.core.nodes.decision import DecisionConfig, DecisionNode
 from launchpad.core.task import TaskContext
-from launchpad.workflows.decision.schema import TicketEvent
+from launchpad.workflows.examples.decision.schema import TicketEvent
 
 
 class Team(UseEnumMemberDocstrings, StrEnum):

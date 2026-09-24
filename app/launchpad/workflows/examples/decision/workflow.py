@@ -1,7 +1,7 @@
 from launchpad.core.schema import NodeConfig, WorkflowSchema
 from launchpad.core.workflow import Workflow
-from launchpad.workflows.decision.nodes.decide_team_node import DecideTeamNode
-from launchpad.workflows.decision.schema import TicketEvent
+from launchpad.workflows.examples.decision.nodes.decide_team_node import DecideTeamNode
+from launchpad.workflows.examples.decision.schema import TicketEvent
 
 
 class DecisionWorkflow(Workflow):

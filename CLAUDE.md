@@ -7,7 +7,7 @@ Production foundation for event-driven GenAI applications. FastAPI + Celery + Re
 - **Don't touch `app/launchpad/core/` unless the user specifically asks.** It's the Launchpad framework, treated as vendored. If you need different behavior, subclass the relevant `Node` / `Workflow` / `BaseRouter`.
 - **Build with the existing patterns.** New workflows go in `app/launchpad/workflows/<your_workflow>/` with `schema.py`, `workflow.py`, `nodes/`, and (optional) `prompts/` and `request_examples/`. Register them in `app/launchpad/workflows/workflow_registry.py`. Mirror the layout of `app/launchpad/workflows/examples/quickstart/`.
 - **Stay inside the existing structure.** Don't create new top-level folders, parallel `src/` trees, or stray scripts unless the user asks for one. New code lives under `app/launchpad/` (or `playground/` for local-only run scripts that match a registered workflow).
-- **Reference workflows are demos.** The five examples under `app/launchpad/workflows/examples/` are reading material — copy from them, don't extend them with project-specific business logic.
+- **Reference workflows are demos.** The six examples under `app/launchpad/workflows/examples/` are reading material — copy from them, don't extend them with project-specific business logic.
 
 ## Workflows — the pattern
 
