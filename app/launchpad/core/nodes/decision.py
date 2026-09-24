@@ -1,34 +1,25 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from pydantic_ai.models import Model
-from pydantic_ai.models.typesafe import (
-    TypeSafeModel,
-    TypeSafeModelName,
-    TypeSafeModelSettings,
-)
+from pydantic_ai.models.typesafe import TypeSafeModelName
 
-from launchpad.core.nodes.pydantic_ai_node import PydanticAIConfig, PydanticAINode
+from launchpad.core.nodes.agent import AgentConfig, AgentNode, ModelProvider
 
 
-@dataclass(kw_only=True)
-class DecisionConfig(PydanticAIConfig):
+@dataclass
+class DecisionConfig(AgentConfig):
+    model_provider: ModelProvider = ModelProvider.TYPESAFE
     # Pinned so tuned confidence thresholds keep meaning the same thing.
     model_name: TypeSafeModelName = "jev-1.13.0"
-    model_settings: TypeSafeModelSettings | None = None
 
 
-class DecisionNode(PydanticAINode, ABC):
-    """Typed decision node backed by TypeSafe's Jev.
+class DecisionNode(AgentNode, ABC):
+    """AgentNode on TypeSafe's Jev: typed decisions, no text generation.
 
-    Jev does not generate text. Each field of `output_type` is a question, and
-    each answer comes with a confidence in
+    Each field of `output_type` is a question. The confidence per field is in
     `result.response.provider_details["confidence"]`.
     """
 
     @abstractmethod
     def get_agent_config(self) -> DecisionConfig:
         pass
-
-    def build_model(self, config: DecisionConfig) -> Model:
-        return TypeSafeModel(config.model_name)

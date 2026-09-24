@@ -1,11 +1,14 @@
 import os
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from abc import abstractmethod, ABC
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Type, Optional, Union, Any, List
 
 import boto3
 from dotenv import load_dotenv
 from google.oauth2 import service_account
+from pydantic import BaseModel
+from pydantic_ai import Agent, AgentRetries
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelName
 from pydantic_ai.models.bedrock import BedrockConverseModel, BedrockModelName
@@ -15,14 +18,17 @@ from pydantic_ai.models.openai import (
     OpenAIChatModel,
     OpenAIResponsesModel,
 )
+from pydantic_ai.models.typesafe import TypeSafeModel, TypeSafeModelName
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.azure import AzureProvider
 from pydantic_ai.providers.bedrock import BedrockProvider
 from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.providers.google_cloud import GoogleCloudProvider
 from pydantic_ai.providers.ollama import OllamaProvider
+from pydantic_ai.settings import ModelSettings
 
-from launchpad.core.nodes.pydantic_ai_node import PydanticAIConfig, PydanticAINode
+from launchpad.core.nodes.base import Node
+from launchpad.core.task import TaskContext
 
 load_dotenv()
 
@@ -35,25 +41,67 @@ class ModelProvider(str, Enum):
     BEDROCK = "bedrock"
     GOOGLE_GEMINI = "google"
     GOOGLE_VERTEX_AI = "google_vertex_ai"
+    TYPESAFE = "typesafe"
 
 
-@dataclass(kw_only=True)
-class AgentConfig(PydanticAIConfig):
+@dataclass
+class AgentConfig:
     model_provider: ModelProvider
-    model_name: (
-        OpenAIModelName | AnthropicModelName | GoogleModelName | BedrockModelName
-    )
+    model_name: Union[
+        OpenAIModelName,
+        AnthropicModelName,
+        GoogleModelName,
+        BedrockModelName,
+        TypeSafeModelName,
+    ]
+    output_type: Any = str
+    instructions: Optional[str] = None
+    deps_type: Optional[Type[Any]] = None
+    name: str | None = None
+    model_settings: ModelSettings | None = None
+    # An int sets both budgets; {"tools": n, "output": n} sets them apart.
+    retries: int | AgentRetries = 1
+    tools: List = field(default_factory=list)
+    # Native tools, thinking, web search, etc. See pydantic_ai.capabilities.
+    capabilities: List = field(default_factory=list)
+    instrument: bool = True
 
 
-class AgentNode(PydanticAINode, ABC):
-    """LLM node. Pick the provider with `AgentConfig.model_provider`."""
+class AgentNode(Node, ABC):
+    class DepsType(BaseModel):
+        pass
+
+    class OutputType(BaseModel):
+        pass
+
+    def __init__(self, task_context: TaskContext = None):
+        super().__init__(task_context=task_context)
+
+        agent_wrapper = self.get_agent_config()
+        self.agent = Agent(
+            model=self.__get_model_instance(
+                agent_wrapper.model_provider, agent_wrapper.model_name
+            ),
+            output_type=agent_wrapper.output_type,
+            instructions=agent_wrapper.instructions,
+            deps_type=agent_wrapper.deps_type,
+            name=agent_wrapper.name,
+            model_settings=agent_wrapper.model_settings,
+            retries=agent_wrapper.retries,
+            tools=agent_wrapper.tools,
+            capabilities=agent_wrapper.capabilities,
+        )
+        self.agent.instrument = agent_wrapper.instrument
+
+        self.agent.instrument_all()
 
     @abstractmethod
     def get_agent_config(self) -> AgentConfig:
         pass
 
-    def build_model(self, config: AgentConfig) -> Model:
-        return self.__get_model_instance(config.model_provider, config.model_name)
+    @abstractmethod
+    async def process(self, task_context: TaskContext) -> TaskContext:
+        pass
 
     def __get_model_instance(self, provider: ModelProvider, model_name: str) -> Model:
         match provider.value:
@@ -71,6 +119,8 @@ class AgentNode(PydanticAINode, ABC):
                 return self.__get_google_gemini_model(model_name)
             case provider.GOOGLE_VERTEX_AI.value:
                 return self.__get_google_vertex_ai_model(model_name)
+            case provider.TYPESAFE.value:
+                return TypeSafeModel(model_name)
         return self.__get_openai_model(model_name)
 
     def __get_openai_model(self, model_name) -> Model:

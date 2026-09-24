@@ -15,7 +15,7 @@ Production foundation for event-driven GenAI applications. FastAPI + Celery + Re
 2. **Nodes** in `nodes/`: one node per file. Pick the right base:
    - `Node` — custom processing / data work.
    - `AgentNode` — LLM call via PydanticAI. Configure with `get_agent_config() -> AgentConfig`.
-   - `DecisionNode` — typed decision via TypeSafe's Jev (no text generation). Configure with `get_agent_config() -> DecisionConfig`.
+   - `DecisionNode` — `AgentNode` on TypeSafe's Jev: typed decisions with confidence, no text generation. Configure with `get_agent_config() -> DecisionConfig`.
    - `ConcurrentNode` — run independent nodes in parallel.
    - `BaseRouter` / `RouterNode` — conditional branching using `get_output()` / `save_output()`.
 3. **Workflow** in `workflow.py`: a `Workflow` subclass with a `workflow_schema = WorkflowSchema(...)` declaring `event_schema`, `start`, and `nodes` (list of `NodeConfig`).
@@ -35,7 +35,7 @@ Use Jinja2 templates via `launchpad.services.prompt_loader.PromptManager`. Two l
 
 ## LLM providers
 
-Switch providers by changing `model_provider` in `AgentConfig`. Supported: OpenAI, Azure OpenAI, Anthropic, Google Gemini, Vertex AI, Bedrock, Ollama. Don't hardcode SDK clients in nodes — go through `AgentNode`.
+Switch providers by changing `model_provider` in `AgentConfig`. Supported: OpenAI, Azure OpenAI, Anthropic, Google Gemini, Vertex AI, Bedrock, Ollama, TypeSafe (Jev). Don't hardcode SDK clients in nodes — go through `AgentNode`.
 
 ## Dependencies — minimise
 

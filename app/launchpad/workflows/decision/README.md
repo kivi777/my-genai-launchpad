@@ -20,12 +20,11 @@ of the model's probabilities.
 
 ## How the node works
 
-`DecisionNode` and `AgentNode` share one base, `PydanticAINode`. Both build a
-PydanticAI `Agent`; `DecisionNode` runs it on
-[PydanticAI's TypeSafe model](https://pydantic.dev/docs/ai/models/typesafe/).
-Implement `get_agent_config()` returning a `DecisionConfig`, define a Pydantic
-`OutputType`, and implement `process()` using `self.agent.run(...)` and
-`save_output()`.
+`DecisionNode` is an `AgentNode` that runs on
+[PydanticAI's TypeSafe model](https://pydantic.dev/docs/ai/models/typesafe/)
+(`ModelProvider.TYPESAFE`). Implement `get_agent_config()` returning a
+`DecisionConfig`, define a Pydantic `OutputType`, and implement `process()`
+using `self.agent.run(...)` and `save_output()`.
 
 Jev does not generate text. The prompt is the text being judged, and the
 fields of `output_type` are the questions. The field type sets the kind of
