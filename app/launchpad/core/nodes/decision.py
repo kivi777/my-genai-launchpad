@@ -1,30 +1,34 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
-from pydantic import BaseModel
-from typesafe_sdk import AsyncTypeSafeClient, Choice, Noul, Score, SystemOneResponse
+from pydantic_ai.models import Model
+from pydantic_ai.models.typesafe import (
+    TypeSafeModel,
+    TypeSafeModelName,
+    TypeSafeModelSettings,
+)
 
-from launchpad.core.nodes.base import Node
+from launchpad.core.nodes.pydantic_ai_node import PydanticAIConfig, PydanticAINode
 
 
-class DecisionConfig(BaseModel):
-    model_name: str = "jev-1.13.0"
-    questions: dict[str, Choice | Score | Noul]
+@dataclass(kw_only=True)
+class DecisionConfig(PydanticAIConfig):
+    # Pinned so tuned confidence thresholds keep meaning the same thing.
+    model_name: TypeSafeModelName = "jev-1.13.0"
+    model_settings: TypeSafeModelSettings | None = None
 
 
-class DecisionNode(Node):
-    """Subclass with typed OutputType and process(), as with AgentNode."""
+class DecisionNode(PydanticAINode, ABC):
+    """Typed decision node backed by TypeSafe's Jev.
+
+    Jev does not generate text. Each field of `output_type` is a question, and
+    each answer comes with a confidence in
+    `result.response.provider_details["confidence"]`.
+    """
 
     @abstractmethod
-    def get_decision_config(self) -> DecisionConfig:
+    def get_agent_config(self) -> DecisionConfig:
         pass
 
-    async def decide(self, state: BaseModel | str) -> SystemOneResponse:
-        """Evaluate state, keeping Jev's typed answers and probabilities intact."""
-        config = self.get_decision_config()
-        async with AsyncTypeSafeClient(model=config.model_name) as client:
-            return await client.system_one(
-                state=state.model_dump(mode="json")
-                if isinstance(state, BaseModel)
-                else state,
-                questions=config.questions,
-            )
+    def build_model(self, config: DecisionConfig) -> Model:
+        return TypeSafeModel(config.model_name)
