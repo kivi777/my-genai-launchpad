@@ -9,10 +9,15 @@ WORKDIR /workspace
 COPY pyproject.toml uv.lock ./
 COPY app/ ./app/
 
-# Install deps + the launchpad package itself (editable) into the
-# system interpreter. Editable install means code edits picked up by a
-# volume mount take effect without a rebuild.
-RUN uv pip install --system -e .
+# Install the exact versions pinned in uv.lock, then the launchpad package
+# itself (editable, no deps) into the system interpreter. A plain
+# `uv pip install -e .` ignores uv.lock and pulls whatever is newest on PyPI.
+# Editable install means code edits picked up by a volume mount take effect
+# without a rebuild.
+RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt \
+    && uv pip install --system -r /tmp/requirements.txt \
+    && uv pip install --system --no-deps -e . \
+    && rm /tmp/requirements.txt
 
 RUN chmod +x /workspace/app/launchpad/start.sh
 

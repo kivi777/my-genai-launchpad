@@ -47,6 +47,8 @@ There are two environment files on purpose:
 - `.env` at the repo root is for local development with your local Python environment, including playground scripts, unit tests, notebooks, and one-off `uv run ...` commands.
 - `docker/.env` is for Docker Compose, the fully containerized Launchpad stack, the database, and optional Supabase services. It is much larger mostly because self-hosted Supabase requires many settings even though Supabase is excluded by default.
 
+The Docker images install the exact versions pinned in `uv.lock`, the same as `uv sync`. After you pull an update that changes `pyproject.toml` or `uv.lock`, run `./start.sh` from `docker/` again so the images rebuild. If a container still fails with `ModuleNotFoundError` (for example `No module named 'psycopg'`), force a clean rebuild with `docker compose -p "$PROJECT_NAME" build --no-cache` from `docker/`, then run `./start.sh`.
+
 ## Workflows
 
 Example workflows live in `app/launchpad/workflows/examples/`.

@@ -11,7 +11,11 @@ WORKDIR /workspace
 COPY pyproject.toml uv.lock ./
 COPY app/ ./app/
 
-RUN uv pip install --system -e .
+# Install the versions pinned in uv.lock; see Dockerfile.api for why.
+RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt \
+    && uv pip install --system -r /tmp/requirements.txt \
+    && uv pip install --system --no-deps -e . \
+    && rm /tmp/requirements.txt
 RUN uv pip install --system watchdog
 
 RUN chown -R celery:celery /workspace
