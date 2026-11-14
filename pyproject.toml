@@ -7,8 +7,10 @@ dependencies = [
     "alembic>=1.18.4",
     "celery>=5.6.3",
     "fastapi>=0.136.0",
+    "httpx>=0.28,<1",
     "jinja2>=3.1.6",
     "langfuse>=3.10.5,<4",
+    "mcp>=2.2,<3",
     "psycopg2-binary>=2.9.11",
     "pydantic>=2.13.1",
     "pydantic-ai[bedrock,typesafe]>=2.49",
@@ -18,6 +20,15 @@ dependencies = [
     "tiktoken>=0.12.0",
     "uvicorn>=0.44.0",
     "vecs>=0.4.5",
+]
+
+[project.optional-dependencies]
+pdf = [
+    "docling>=2,<3",
+]
+meeting = [
+    "openpyxl>=3.1,<4",
+    "python-pptx>=1,<2",
 ]
 
 [build-system]

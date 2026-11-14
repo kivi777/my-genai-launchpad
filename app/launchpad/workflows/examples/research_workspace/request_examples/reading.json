@@ -1,0 +1,7 @@
+{
+  "action": "reading_note",
+  "library": "information-retrieval",
+  "query": "DPR 和 BEIR 分别解决了什么问题？列出它们的代码仓库和数据集入口。",
+  "keywords": "DPR OR BEIR",
+  "limit": 2
+}

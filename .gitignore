@@ -92,8 +92,21 @@ target/
 # Alembic migrations
 app/launchpad/alembic/versions/*
 !app/launchpad/alembic/versions/.gitkeep
+!app/launchpad/alembic/versions/20261113_research_papers.py
+!app/launchpad/alembic/versions/20261113_research_chunks.py
+!app/launchpad/alembic/versions/20261113_research_bge.py
+!app/launchpad/alembic/versions/20261113_research_embedding_backend.py
+!app/launchpad/alembic/versions/20261113_research_events.py
+!app/launchpad/alembic/versions/20261113_research_conversations.py
+!app/launchpad/alembic/versions/20261113_research_numbers.py
+!app/launchpad/alembic/versions/20261114_research_trace.py
+!app/launchpad/alembic/versions/20261113_research_reader.py
 
 # Launchpad playground
 playground/*.png
 
 app/launchpad/google-service-account.json
+
+# Research workspace uploaded documents
+/data/research-uploads/
+/data/research-demo-uploads/

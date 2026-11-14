@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Column, DateTime, String
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 
+from launchpad.database.research_conversation import ResearchConversation  # noqa: F401
 from launchpad.database.session import Base
 
 """
@@ -41,6 +42,14 @@ class Event(Base):
     )
     data = Column(JSON, doc="Raw event data as received from the API endpoint")
     task_context = Column(JSON, doc="Processing results and metadata from the workflow")
+
+    research_progress = Column(JSON, nullable=True)
+
+    research_conversation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("research_conversations.id", name="fk_events_research_conversation"),
+        index=True,
+    )
 
     created_at = Column(
         DateTime, default=datetime.now, doc="Timestamp when the event was created"

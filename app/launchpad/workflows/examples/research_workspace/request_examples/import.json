@@ -1,0 +1,26 @@
+{
+  "action": "import_papers",
+  "library": "information-retrieval",
+  "papers": [
+    {
+      "id": "dpr-2020",
+      "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+      "abstract": "DPR uses separate encoders for questions and passages, so passage vectors can be indexed before search. The paper evaluates dense retrieval against a BM25 baseline on open-domain question answering datasets including Natural Questions.",
+      "source_url": "https://aclanthology.org/2020.emnlp-main.550/",
+      "assets": [
+        {"kind": "code", "name": "DPR reference implementation", "url": "https://github.com/facebookresearch/DPR"},
+        {"kind": "dataset", "name": "Natural Questions", "url": "https://ai.google.com/research/NaturalQuestions"}
+      ]
+    },
+    {
+      "id": "beir-2021",
+      "title": "BEIR: A Heterogenous Benchmark for Zero-shot Evaluation of Information Retrieval Models",
+      "abstract": "BEIR evaluates how retrieval systems generalize across domains and tasks. The benchmark compares lexical, sparse, dense, late-interaction, and reranking methods on a collection of public retrieval datasets.",
+      "source_url": "https://arxiv.org/abs/2104.08663",
+      "assets": [
+        {"kind": "code", "name": "BEIR evaluation code", "url": "https://github.com/beir-cellar/beir"},
+        {"kind": "dataset", "name": "BEIR dataset catalog", "url": "https://github.com/beir-cellar/beir/wiki/Datasets-available"}
+      ]
+    }
+  ]
+}

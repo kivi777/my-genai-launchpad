@@ -10,6 +10,9 @@ from launchpad.database.session import Base
 
 # This import is required for autogenerate support
 from launchpad.database.event import *
+from launchpad.database.research_number import ResearchLibraryCounter  # noqa: F401
+from launchpad.database.research_paper import ResearchChunk, ResearchPaper  # noqa: F401
+from launchpad.database.research_reader import ResearchAnnotation, ResearchReaderNote  # noqa: F401
 
 """
 Alembic Environment Module

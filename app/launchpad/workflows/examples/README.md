@@ -12,5 +12,6 @@ Each subdirectory is self-contained (`schema.py`, `workflow.py`, `nodes/`, `requ
 | [`langfuse_tracing/`](./langfuse_tracing/) | Enabling Langfuse tracing on a multi-node moderation pipeline | `uv run playground/langfuse_tracing.py` |
 | [`pgvector_rag/`](./pgvector_rag/) | Retrieval-augmented generation against `pgvector` | `uv run playground/pgvector_rag.py` |
 | [`decision/`](./decision/) | Typed decision with confidence via `DecisionNode` and TypeSafe's Jev | `uv run playground/decision.py` |
+| [`research_workspace/`](./research_workspace/) | Import papers and assets, then generate a cited reading note via FastAPI SSE | `RESEARCH_DEMO_MODE=1 uv run playground/research_workspace.py` |
 
 Delete whichever examples you don't need and remove their entries from `WorkflowRegistry` — nothing else in the app depends on them.

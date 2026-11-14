@@ -1,7 +1,8 @@
-FROM python:3.13.13-slim-bookworm
+ARG LAUNCHPAD_PYTHON_IMAGE=python:3.13.13-slim-bookworm
+FROM ${LAUNCHPAD_PYTHON_IMAGE}
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-RUN groupadd -r celery && useradd -r -g celery celery
+RUN groupadd -r celery && useradd -r -m -g celery celery
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -12,13 +13,19 @@ COPY pyproject.toml uv.lock ./
 COPY app/ ./app/
 
 # Install the versions pinned in uv.lock; see Dockerfile.api for why.
-RUN uv export --frozen --no-dev --no-emit-project -o /tmp/requirements.txt \
+ARG LAUNCHPAD_EXTRAS=""
+RUN if echo "$LAUNCHPAD_EXTRAS" | grep -qw pdf; then \
+    apt-get update && apt-get install -y --no-install-recommends libglib2.0-0 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*; fi
+RUN uv export ${LAUNCHPAD_EXTRAS} --frozen --no-dev --no-emit-project -o /tmp/requirements.txt \
     && uv pip install --system -r /tmp/requirements.txt \
     && uv pip install --system --no-deps -e . \
     && rm /tmp/requirements.txt
 RUN uv pip install --system watchdog
 
 RUN chown -R celery:celery /workspace
+RUN mkdir -p /research-artifacts/decks /home/celery/.cache \
+    && chown celery:celery /research-artifacts/decks /home/celery/.cache
 
 USER celery
 

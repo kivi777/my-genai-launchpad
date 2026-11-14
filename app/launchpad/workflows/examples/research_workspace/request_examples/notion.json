@@ -1,0 +1,8 @@
+{
+  "action": "import_notion",
+  "library": "information-retrieval",
+  "page_id": "6c65aa2b-8e35-45f5-8f7d-90603c41b9ac",
+  "title": "DPR 复现笔记",
+  "source_url": "https://www.notion.so/6c65aa2b8e3545f58f7d90603c41b9ac",
+  "markdown": "## 实验设置\n记录 DPR 基线的 Recall@10。"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "dpr-2020",
+  "title": "Dense Passage Retrieval for Open-Domain Question Answering",
+  "source_url": "https://aclanthology.org/2020.emnlp-main.550/",
+  "assets": [
+    {"kind": "code", "name": "DPR reference implementation", "url": "https://github.com/facebookresearch/DPR"},
+    {"kind": "dataset", "name": "Natural Questions", "url": "https://ai.google.com/research/NaturalQuestions"}
+  ]
+}

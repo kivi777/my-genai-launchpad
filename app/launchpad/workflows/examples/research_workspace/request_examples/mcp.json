@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "research-library": {
+      "type": "stdio",
+      "command": "/absolute/path/to/genai-launchpad/.venv/bin/python",
+      "args": [
+        "-m",
+        "launchpad.workflows.examples.research_workspace.mcp_server"
+      ]
+    },
+    "notion": {
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp"
+    }
+  }
+}

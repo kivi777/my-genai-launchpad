@@ -1,0 +1,66 @@
+services:
+  redis:
+    healthcheck:
+      interval: 3s
+
+  api:
+    ports: !override
+      - "127.0.0.1:${RESEARCH_API_PORT:-8080}:8080"
+    build:
+      args:
+        LAUNCHPAD_PYTHON_IMAGE: ${LAUNCHPAD_PYTHON_IMAGE:-python:3.13.13-slim-bookworm}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      RESEARCH_OFFLINE_MODE: ${RESEARCH_OFFLINE_MODE:-0}
+      RESEARCH_UPLOAD_DIR: /workspace/data/research-uploads
+      RESEARCH_PPT_OUTPUT_DIR: /research-artifacts/decks
+    volumes:
+      - research-artifacts:/research-artifacts
+      - type: bind
+        source: ${RESEARCH_UPLOAD_HOST_DIR:-../data/research-uploads}
+        target: /workspace/data/research-uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/openapi.json', timeout=3).close()"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  celery_worker:
+    build:
+      args:
+        LAUNCHPAD_PYTHON_IMAGE: ${LAUNCHPAD_PYTHON_IMAGE:-python:3.13.13-slim-bookworm}
+        LAUNCHPAD_EXTRAS: ${RESEARCH_WORKER_EXTRAS:---extra pdf --extra meeting}
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      LANGFUSE_PROJECT_ID: ${LANGFUSE_PROJECT_ID:-}
+      RESEARCH_LANGFUSE_ENABLED: ${RESEARCH_LANGFUSE_ENABLED:-0}
+      RESEARCH_EXTERNAL_MCP_URL: ${RESEARCH_EXTERNAL_MCP_URL:-}
+      RESEARCH_EXTERNAL_MCP_TOOL: ${RESEARCH_EXTERNAL_MCP_TOOL:-}
+      HF_HUB_OFFLINE: ${HF_HUB_OFFLINE:-0}
+      RESEARCH_INTENT_MODEL: ${RESEARCH_INTENT_MODEL:-deepseek-flash}
+      RESEARCH_CHAT_MODEL: ${RESEARCH_CHAT_MODEL:-deepseek-flash}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      RESEARCH_PPT_MCP_URL: ${RESEARCH_PPT_MCP_URL:-}
+      RESEARCH_OFFLINE_MODE: ${RESEARCH_OFFLINE_MODE:-0}
+      RESEARCH_UPLOAD_DIR: /workspace/data/research-uploads
+      RESEARCH_PPT_OUTPUT_DIR: /research-artifacts/decks
+    volumes:
+      - research-artifacts:/research-artifacts
+      - type: bind
+        source: ${RESEARCH_UPLOAD_HOST_DIR:-../data/research-uploads}
+        target: /workspace/data/research-uploads
+        read_only: true
+      - research-models:/home/celery/.cache
+    command: ["celery", "-A", "launchpad.worker.config", "worker", "--loglevel=info", "--concurrency=1", "--", "task_track_started=True"]
+
+volumes:
+  research-models:
+  research-artifacts:

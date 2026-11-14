@@ -1,0 +1,9 @@
+{
+  "action": "weekly_report",
+  "library": "information-retrieval",
+  "week_start": "2026-11-09",
+  "messages": [
+    {"id": "m1", "timestamp": "2026-11-10T14:30:00+08:00", "role": "user", "text": "本周完成了 DPR 基线复现，记录了 Recall@10。"},
+    {"id": "m2", "timestamp": "2026-11-12T10:00:00+08:00", "role": "user", "text": "BEIR 实验仍在运行，下周计划补做跨领域对比。"}
+  ]
+}
