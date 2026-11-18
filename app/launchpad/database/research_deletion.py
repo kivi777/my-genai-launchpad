@@ -3,7 +3,7 @@ from pathlib import Path
 from shutil import rmtree
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from launchpad.database.event import Event
@@ -58,6 +58,7 @@ def _delete_locked(
     expected_pdf: UUID | None,
     staged: Path,
 ) -> None:
+    session.execute(select(func.pg_advisory_xact_lock(915781, func.hashtext(library))))
     papers = ResearchPaper.__table__
     current = session.execute(
         select(papers.c.payload).where(*scope).with_for_update()
@@ -79,7 +80,11 @@ def _delete_locked(
             ).where(
                 Event.workflow_type == "RESEARCH_PDF",
                 Event.data["library"].as_string() == library,
-                Event.data["paper"]["id"].as_string() == paper_id,
+                or_(
+                    Event.data["paper"]["id"].as_string() == paper_id,
+                    Event.task_context["nodes"]["ImportPdfNode"]["paper_id"].as_string()
+                    == paper_id,
+                ),
             )
         )
     )

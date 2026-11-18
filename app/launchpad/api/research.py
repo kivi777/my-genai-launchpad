@@ -2,15 +2,17 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
+from shutil import rmtree
 from tempfile import TemporaryDirectory
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Body, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from launchpad.api.research_conversations import router as conversation_router
+from launchpad.api.research_meeting_prompts import router as meeting_prompt_router
 from launchpad.api.research_reader import router as reader_router
 from launchpad.api.research_workspace_info import router as workspace_info_router
 from launchpad.workflows.examples.research_workspace import config
@@ -18,21 +20,38 @@ from launchpad.workflows.examples.research_workspace.jobs import (
     ConversationLibraryError,
     ConversationNotFoundError,
     DispatchError,
+    PdfBatch,
     ResearchJob,
     get_job,
+    get_pdf_batch,
     recent_jobs,
     submit_job,
+    submit_pdf_batch,
 )
+from launchpad.workflows.examples.research_workspace.notion import (
+    NotionError,
+    NotionPageList,
+    list_notion_children,
+    search_notion_pages,
+)
+from launchpad.workflows.examples.research_workspace.ppt_preview import (
+    PreviewUnavailable,
+    preview_presentation,
+)
+from launchpad.workflows.examples.research_workspace.ppt_skills import get_skill
 from launchpad.workflows.examples.research_workspace.publication import (
     KeywordPreview,
     preview_publication,
     suggest_pdf_keywords,
 )
 from launchpad.workflows.examples.research_workspace.schema import (
+    PDF_BATCH_LIMIT,
     ImportEvent,
     LibraryName,
     MeetingEvent,
     NotionImportEvent,
+    NotionPageImportEvent,
+    PaperId,
     PdfImportEvent,
     PdfMetadata,
     Publication,
@@ -47,6 +66,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(reader_router)
 router.include_router(conversation_router)
+router.include_router(meeting_prompt_router)
 router.include_router(workspace_info_router)
 
 
@@ -264,6 +284,58 @@ async def pdf_keywords(request: PdfPreviewRequest) -> KeywordPreview:
         raise HTTPException(502, "关键词生成失败，请重试。") from exc
 
 
+class NotionPageSelection(BaseModel):
+    library: LibraryName
+    page_ids: list[UUID] = Field(min_length=1, max_length=20)
+
+
+class NotionPageJob(BaseModel):
+    page_id: UUID
+    job: ResearchJob
+
+
+@router.get("/notion-pages")
+async def notion_pages(
+    q: Annotated[str, Query(max_length=500)] = "",
+    cursor: Annotated[str | None, Query(max_length=250)] = None,
+) -> NotionPageList:
+    try:
+        return await search_notion_pages(q.strip(), cursor)
+    except NotionError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@router.get("/notion-pages/{page_id}/children")
+async def notion_children(
+    page_id: UUID, cursor: Annotated[str | None, Query(max_length=250)] = None
+) -> NotionPageList:
+    try:
+        return await list_notion_children(page_id, cursor)
+    except NotionError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+
+
+@router.post("/notion-pages/import", status_code=202)
+async def import_notion_pages(request: NotionPageSelection) -> list[NotionPageJob]:
+    if config.DEMO_MODE or not config.NOTION_TOKEN:
+        raise HTTPException(
+            503, "Notion 导入需要后台任务队列和 RESEARCH_NOTION_TOKEN。"
+        )
+    jobs = []
+    for page_id in dict.fromkeys(request.page_ids):
+        event = NotionPageImportEvent(library=request.library, page_id=page_id)
+        try:
+            job = await asyncio.to_thread(
+                submit_job, event, WorkflowRegistry.RESEARCH_NOTION
+            )
+        except DispatchError as exc:
+            job = await asyncio.to_thread(get_job, exc.run_id)
+            if job is None:
+                raise HTTPException(503, "无法提交 Notion 导入任务。") from exc
+        jobs.append(NotionPageJob(page_id=page_id, job=job))
+    return jobs
+
+
 @router.post("/pdf-publication")
 async def pdf_publication(request: PdfPreviewRequest) -> PdfPublicationPreview:
     if config.USE_SAMPLE_MODELS or not config.DEEPSEEK_API_KEY:
@@ -322,16 +394,72 @@ async def research_pdf(
     return stream_response(import_pdf())
 
 
+@router.post("/pdf-batches", status_code=202)
+async def research_pdf_batch(
+    files: Annotated[list[UploadFile], File(min_length=1, max_length=PDF_BATCH_LIMIT)],
+    library: Annotated[LibraryName, Form()],
+) -> PdfBatch:
+    if config.USE_SAMPLE_MODELS or not config.DEEPSEEK_API_KEY:
+        raise HTTPException(503, "批量导入需要正式模式和 DeepSeek 密钥。")
+    limit = 30 * 1024 * 1024
+    if any((file.size or 0) > limit for file in files):
+        raise HTTPException(413, "每篇 PDF 不得超过 30 MiB。")
+    if sum(file.size or 0 for file in files) > 120 * 1024 * 1024:
+        raise HTTPException(413, "单批 PDF 总大小不得超过 120 MiB。")
+
+    batch_id = uuid4()
+    requests = []
+    staged = []
+    try:
+        for position, file in enumerate(files, 1):
+            filename = (file.filename or f"论文 {position}.pdf")[:250]
+            pdf = await file.read(limit + 1)
+            if len(pdf) > limit:
+                raise HTTPException(413, f"{filename} 超过 30 MiB。")
+            if not pdf.startswith(b"%PDF-"):
+                raise HTTPException(422, f"{filename} 不是有效的 PDF。")
+            run_id = uuid4()
+            staged.append(config.UPLOAD_DIR / run_id.hex)
+            path = await asyncio.to_thread(save_upload, run_id, "paper.pdf", pdf)
+            requests.append(
+                PdfImportEvent(
+                    library=library,
+                    paper=PdfMetadata(pdf_run_id=run_id),
+                    pdf_path=path,
+                    enrich_metadata=True,
+                    match_existing=True,
+                    batch_id=batch_id,
+                    batch_position=position,
+                    filename=filename,
+                )
+            )
+    except BaseException:
+        for directory in staged:
+            await asyncio.to_thread(rmtree, directory, ignore_errors=True)
+        raise
+    return await asyncio.to_thread(submit_pdf_batch, batch_id, requests)
+
+
+@router.get("/pdf-batches/{batch_id}")
+def research_pdf_batch_status(batch_id: UUID) -> PdfBatch:
+    batch = get_pdf_batch(batch_id)
+    if batch is None:
+        raise HTTPException(404, "找不到该批量导入任务。")
+    return batch
+
+
 @router.post("/meeting", status_code=202, response_model=None)
 async def research_meeting(
-    file: UploadFile,
     library: Annotated[LibraryName, Form()],
     query: Annotated[str, Form(min_length=1, max_length=1000)],
-    worksheet: Annotated[str, Form(min_length=1, max_length=31)],
-    category_column: Annotated[str, Form(min_length=1, max_length=100)],
-    value_column: Annotated[str, Form(min_length=1, max_length=100)],
+    file: UploadFile | None = None,
+    worksheet: Annotated[str | None, Form(min_length=1, max_length=31)] = None,
+    category_column: Annotated[str | None, Form(min_length=1, max_length=100)] = None,
+    value_column: Annotated[str | None, Form(min_length=1, max_length=100)] = None,
     weekly_report: Annotated[str | None, Form(min_length=1, max_length=30000)] = None,
     weekly_run_id: Annotated[UUID | None, Form()] = None,
+    style_skill_id: Annotated[UUID | None, Form()] = None,
+    source_ids: Annotated[list[PaperId] | None, Form(max_length=10)] = None,
 ) -> JSONResponse | StreamingResponse:
     if weekly_run_id is not None and weekly_report is not None:
         raise HTTPException(422, "Provide weekly_report or weekly_run_id")
@@ -342,54 +470,76 @@ async def research_meeting(
             if report
             else None
         )
-    if not weekly_report or not weekly_report.strip():
-        raise HTTPException(
-            422, "Provide Markdown or a completed weekly report ID for this library"
-        )
-    if len(weekly_report) > 30000:
+        if not weekly_report:
+            raise HTTPException(422, "找不到同一资料库中已完成的周报。")
+    if weekly_report and len(weekly_report) > 30000:
         raise HTTPException(422, "Weekly report exceeds 30,000 characters")
-    workbook = await file.read(10 * 1024 * 1024 + 1)
-    if len(workbook) > 10 * 1024 * 1024:
-        raise HTTPException(413, "Workbook exceeds 10 MiB")
-    if not (file.filename or "").lower().endswith(".xlsx") or not workbook.startswith(
-        b"PK"
-    ):
-        raise HTTPException(422, "Expected an XLSX workbook")
+    workbook = None
+    if file is not None:
+        workbook = await file.read(10 * 1024 * 1024 + 1)
+        if len(workbook) > 10 * 1024 * 1024:
+            raise HTTPException(413, "实验表格最大为 10 MiB。")
+        if not (file.filename or "").lower().endswith(
+            ".xlsx"
+        ) or not workbook.startswith(b"PK"):
+            raise HTTPException(422, "请选择有效的 XLSX 实验表格。")
     if not query.strip():
         raise HTTPException(422, "Query must not be blank")
 
-    def meeting_event(path: str) -> MeetingEvent:
+    style_skill = None
+    if style_skill_id is not None:
+        try:
+            style_skill = await asyncio.to_thread(get_skill, style_skill_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, "PPT Skill 已删除，请重新选择。") from exc
+        if (
+            config.USE_SAMPLE_MODELS
+            and style_skill.theme is None
+            and not style_skill.uses_academic_layout
+        ):
+            raise HTTPException(
+                422, "离线模式需要 Skill 在 metadata 中提供 Launchpad 配色配置。"
+            )
+
+    def meeting_event(path: str | None) -> MeetingEvent:
         return MeetingEvent(
             library=library,
             query=query,
-            weekly_report=weekly_report,
+            weekly_report=(weekly_report or "").strip(),
             workbook_path=path,
             worksheet=worksheet,
             category_column=category_column,
             value_column=value_column,
+            source_ids=list(dict.fromkeys(source_ids or [])),
+            style_skill=style_skill,
         )
 
     if not config.DEMO_MODE:
         run_id = uuid4()
-        path = await asyncio.to_thread(save_upload, run_id, "experiment.xlsx", workbook)
+        path = (
+            await asyncio.to_thread(save_upload, run_id, "experiment.xlsx", workbook)
+            if workbook is not None
+            else None
+        )
         return await dispatch(
             meeting_event(path), WorkflowRegistry.RESEARCH_MEETING, run_id
         )
 
     async def run_meeting() -> AsyncIterator[str]:
         with TemporaryDirectory() as directory:
-            path = Path(directory) / "experiment.xlsx"
-            await asyncio.to_thread(path.write_bytes, workbook)
+            path = Path(directory) / "experiment.xlsx" if workbook is not None else None
+            if path is not None and workbook is not None:
+                await asyncio.to_thread(path.write_bytes, workbook)
             async for message in event_stream(
-                meeting_event(str(path)), WorkflowRegistry.RESEARCH_MEETING
+                meeting_event(str(path) if path is not None else None),
+                WorkflowRegistry.RESEARCH_MEETING,
             ):
                 yield message
 
     return stream_response(run_meeting())
 
 
-@router.get("/decks/{filename}", response_class=FileResponse)
-async def research_deck(filename: str) -> FileResponse:
+def deck_path(filename: str) -> Path:
     try:
         artifact_id = UUID(filename.removesuffix(".pptx")).hex
         if filename != f"{artifact_id}.pptx":
@@ -399,11 +549,28 @@ async def research_deck(filename: str) -> FileResponse:
     path = Path(config.PPT_OUTPUT_DIR) / filename
     if not path.is_file():
         raise HTTPException(404, "Presentation not found")
+    return path
+
+
+@router.get("/decks/{filename}", response_class=FileResponse)
+async def research_deck(filename: str) -> FileResponse:
     return FileResponse(
-        path,
+        deck_path(filename),
         filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
     )
+
+
+@router.get("/decks/{filename}/preview", response_class=FileResponse)
+async def research_deck_preview(filename: str) -> FileResponse:
+    source = deck_path(filename)
+    try:
+        preview = await asyncio.to_thread(preview_presentation, source)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "PPT 原文件已不存在。") from exc
+    except PreviewUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return FileResponse(preview, media_type="application/pdf")
 
 
 @router.get("/pdf/{run_id}", response_class=FileResponse)

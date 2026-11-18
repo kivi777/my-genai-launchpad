@@ -91,9 +91,15 @@ uv run --locked python playground/research_workspace.py \
 ### 1. 建立科研知识库
 
 - **论文与资产**。通过 `POST /research/pdf` 上传 `file`、`library` 和 JSON 字符串 `paper`。前端上传时由后端按资料库自动分配编号，原文链接可选。导入保留论文原题。开启「自动生成关键词」后，DeepSeek 先从 PDF 首页提取原文标题，再仅根据标题生成最多 3 个中文检索关键词。「查询发表渠道与 CCF 等级」是独立开关，默认关闭。开启后，DeepSeek 从首页提取原题和发表证据，首页未确认正式渠道时按原题查询 Crossref。后端按本地已核对的 CCF 人工智能目录条目匹配等级。未匹配的字段留空，预览结果随论文提交入库。正式 PDF 入库需要 DeepSeek 和硅基流动密钥。Worker 用 Docling HybridChunker 按结构分块，保留章节和页码，再用硅基流动 BGE-M3 生成 1024 维向量。同一资料库的相同 ID 会更新记录、替换旧片段。已有论文资产和旧版 JSON 请求继续兼容。也可用 `POST /research/events` 的 [import_papers 样例](request_examples/import.json) 导入多条摘要。
-- **个人笔记**。授权 Notion MCP 客户端读取目标页面，通过科研 MCP 的 `index_notion_note` 提交 Markdown，或通过 [import_notion 请求](request_examples/notion.json) 提交相同数据。Worker 按 Markdown 标题和长度分段，保留 Notion 页面 ID、URL 和章节。相同页面重新导入会更新其片段。PDF 与笔记可在同一资料库检索，来源类型可见。
+- **个人笔记**。页面内选择「资料导入 → 导入笔记 → 从 Notion 选取」，按标题查找获授权的页面，勾选后提交。API 只把所选页面 ID 写入事件并投递任务。Worker 读取页面及 Markdown，按标题和长度分段、嵌入并写入资料库。相同的 Notion 页面 ID 在同一资料库中重新导入时会替换原有切片。也可从已授权的 Notion MCP 客户端调用科研 MCP 的 `index_notion_note`，或者使用 [import_notion 请求](request_examples/notion.json) 提交 Markdown。
 
-论文可选择自动生成检索关键词。Notion 笔记可用逗号或顿号分隔多个关键词。关键词与资料一同入库，查询时输入完整关键词可优先匹配对应资料。删除资料会清除记录和索引，后续导入继续使用新编号。已有 ID 和显式传入页面 ID 的 MCP 导入继续兼容。
+在 [Notion Developer Portal](https://app.notion.com/developers/connections) 新建一个 Internal connection，开启 Read content，再通过 Content access 或 Notion 页面右上角的 Connections 菜单授权页面。在本机运行时把连接令牌设置为根目录 `.env` 中的 `RESEARCH_NOTION_TOKEN`。使用 Compose 时写到 `docker/.env`。重新启动 API 与 Worker 后，Launchpad 会列出 Notion 搜索返回的授权页面。
+
+论文可选择自动生成检索关键词。批量导入通过 `POST /research/pdf-batches` 提交同一资料库的多份 PDF。每批最多 20 篇，每篇 30 MiB，合计 120 MiB。API 先保存文件和各篇事件，再把批次提交给 Redis。Celery Worker 按文件选择顺序执行现有 PDF 工作流，逐篇生成中文关键词、核对发表渠道与 CCF 等级，并记录任务进度。个别论文失败后继续处理下一篇。用 `GET /research/pdf-batches/{batch_id}` 查看逐篇结果。
+
+同一资料库自动分配 ID 的 PDF 导入按文件 SHA-256 或唯一的规范化原题匹配重复论文。匹配后沿用论文 ID，并在同一数据库事务里更新元数据、替换切片和向量。文件内容相同时保留 PDF ID，已有批注和笔记仍关联到原件。文件内容有变化时使用新版 PDF，旧 PDF 链接及其批注仍可回溯。
+
+Notion 笔记可用逗号或顿号分隔多个关键词。关键词与资料一同入库，查询时输入完整关键词可优先匹配对应资料。删除资料会清除记录和索引，后续导入继续使用新编号。已有 ID 和显式传入页面 ID 的 MCP 导入继续兼容。
 
 在 Navicat 核对片段数、发表信息和向量维度，可在连接的 `postgres → public` 下执行：
 
@@ -117,24 +123,48 @@ ORDER BY 1, 2;
 
 ### 3. 生成周报
 
-提交 [weekly_report 请求](request_examples/weekly.json)，包含周一日期和你提供的一周对话记录。Worker 按上海时区筛选周一至周日，用 DeepSeek 提炼完成事项、发现、阻塞和下周计划，每条带对话 ID。完成结果提供 Markdown。Notion MCP 客户端可在你指定的页面下归档周报。对话从客户端提供，任务由请求触发。
+工具栏中的科研周报默认整理包含今天在内的过去七天，可调整起止日期，选择全部会话或仅当前资料库。Worker 从 PostgreSQL 读取对应日期的会话消息，按北京时间提炼每天的完成与推进、研究关注、讨论发现、问题及后续安排。每条结果保留会话名称和时间，日期由来源消息确定。模型需引用用户消息才能归纳完成事项、研究关注和后续安排。较多消息分批处理，生成的 Markdown 通过任务记录持久化，可预览、下载和从周报生成记录重新打开。原有显式提供 `messages` 的 [weekly_report 请求](request_examples/weekly.json) 继续可用。
 
 ### 4. 制作组会 PPT
 
-通过 `POST /research/meeting` 上传 XLSX，传入周报任务 ID（同一资料库）或已有周报 Markdown，再指定提示、工作表和列名。Worker 读取 Excel、检索文献、让 DeepSeek 组织大纲，再调用独立的 `render_meeting_pptx` MCP 工具。完成结果的 `RenderMeetingNode.url` 是下载地址。图表直接读取 Excel 数值，支持一个类别列、一个数值列和最多 100 条数据。公式值需预先计算并保存。文献出处附原文链接和可用页码。
+在组会 PPT 页面选择风格，填写汇报提示。可指定资料库中的 PDF 和 Notion 笔记，也可补充 Markdown 或上传 XLSX。未指定资料时，Worker 从当前资料库检索。上传 XLSX 时自动选择可用工作表、类别列和数值列，提示里写明列名可帮助定位指标。图表直接读取 Excel 数值，最多支持 100 条数据。公式值需预先计算并保存。
+
+DeepSeek 组织大纲，独立的 `render_meeting_pptx` MCP 工具负责出稿。默认使用内置 `research-ppt-skill`。本地 MCP 根据页面用途选择 Skill 自带的版式和组件，运行 `dense_deck.py`，再用 `lint.py` 和 `spec_audit.py` 检查。方法标题明确给出有序阶段时，生成可编辑的流程条。正文超出版面时自动换成通栏重排一次。上传实验表格时使用原始数值生成可编辑图表。同一份资料的多个引用片段合并到资料出处的一条记录。成品在 PPT 生成记录里可重新下载。任务记录使用 PostgreSQL，PPTX 使用 Compose 的 `research-artifacts` 持久卷，本地模式默认保存到上传目录旁的 `research-decks`。
+
+任务结果和历史记录都可在工作区左侧预览 PPT。后端首次打开时用 LibreOffice 转为 PDF，在同一产物目录缓存供再次预览。科研 Compose 的 API 镜像内置 LibreOffice Impress 和中文字体，已有容器需要重新构建 API 镜像。本机运行时，后端从 `PATH` 或 macOS 的 `/Applications/LibreOffice.app` 查找 LibreOffice。
+
+显式选择的资料全为 Notion 笔记时，工作流按 ID 读取 PostgreSQL 中的 Markdown 正文并直接生成大纲。历史笔记和预览共用同一正文恢复逻辑。含论文或未指定资料时仍由检索步骤获取证据。
 
 ```sh
 curl -sS http://127.0.0.1:8080/research/meeting \
   -F 'file=@results.xlsx' \
   -F 'library=information-retrieval' \
   -F 'query=突出 DPR 基线、Recall@10 和下一步实验' \
-  -F 'weekly_run_id=替换为周报任务ID' \
-  -F 'worksheet=Results' \
-  -F 'category_column=Method' \
-  -F 'value_column=Recall@10'
+  -F 'weekly_report=本周完成两项基线实验'
 ```
 
-也可用 `weekly_report=<weekly.md` 代替 `weekly_run_id`。默认 renderer 为本地 stdio MCP 进程。配置 `RESEARCH_PPT_MCP_URL` 可换成 Streamable HTTP 服务。工具接收 `outline`、`experiment` 和 `evidence`，返回 `filename` 和可访问的下载 `url`。
+API 仍接受原有的 `weekly_run_id`、`worksheet`、`category_column` 和 `value_column` 参数。默认渲染器为本地 stdio MCP 进程。配置 `RESEARCH_PPT_MCP_URL` 可换成 Streamable HTTP 服务。工具接收 `outline`、可为空的 `experiment` 和 `evidence`，返回 `filename` 和可访问的下载 `url`。
+
+在「工具栏 → Skill 接入」上传 PPT 风格的 `SKILL.md`，再在「组会 PPT → PPT 风格 Skill」选择。Skill 正文可以描述汇报顺序、语言风格和视觉要求。DeepSeek 会根据正文生成大纲及主题，`metadata` 中的显式配色优先。导入记录保存在论文上传数据卷的 `ppt-skills` 目录。
+
+在 Skill 面板可以按名称或描述搜索，点击名称查看正文和主题，再编辑或移除。编辑保留原 Skill ID。已经提交的 PPT 任务保存提交时的 Skill 内容。
+
+```markdown
+---
+name: research-blue
+description: 白底蓝色的科研组会风格，先展示结论，再解释实验结果。
+metadata:
+  launchpad-background: "#F4F8FF"
+  launchpad-text: "#14213D"
+  launchpad-accent: "#2458A6"
+  launchpad-font: "Aptos"
+  launchpad-chart: "bar"
+---
+
+每页用一句话概括结论。实验结果用简短要点解释，并保留原始指标值。
+```
+
+图表可选 `bar`、`column` 或 `line`。离线生成需要显式主题配置。导入范围为单个 Markdown 文件，附带的脚本、图片及模板文件由原 Skill 包管理。远程 PPT MCP 需提供可选的 `theme` 参数才能应用风格。
 
 ## MCP 与可观测性
 

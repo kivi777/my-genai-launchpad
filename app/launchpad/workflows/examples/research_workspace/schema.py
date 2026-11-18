@@ -1,6 +1,7 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import (
     AwareDatetime,
@@ -9,6 +10,7 @@ from pydantic import (
     Field,
     FiniteFloat,
     HttpUrl,
+    RootModel,
     StringConstraints,
     model_validator,
 )
@@ -23,6 +25,7 @@ Keyword = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
 ]
 Keywords = Annotated[list[Keyword], Field(max_length=20)]
+PDF_BATCH_LIMIT = 20
 
 
 class Asset(BaseModel):
@@ -36,6 +39,11 @@ class Publication(BaseModel):
     venue_type: Literal["conference", "journal", "preprint", "unknown"]
     year: int | None = Field(default=None, ge=1800, le=2100)
     ccf_rank: Literal["A", "B", "C"] | None = None
+
+
+class NotionParent(BaseModel):
+    kind: str
+    id: UUID | None = None
 
 
 class PdfMetadata(BaseModel):
@@ -57,8 +65,10 @@ class Paper(BaseModel):
     source_url: HttpUrl | None = None
     publication: Publication | None = None
     pdf_run_id: UUID | None = None
+    pdf_sha256: str | None = None
     assets: list[Asset] = Field(default_factory=list, max_length=30)
     keywords: Keywords = Field(default_factory=list)
+    notion_parent: NotionParent | None = None
 
     def search_text(self) -> str:
         return " ".join(
@@ -124,6 +134,12 @@ class SearchHit(BaseModel):
     locator: str | None = None
 
 
+class MeetingNote(BaseModel):
+    paper: Paper
+    markdown: str = Field(exclude=True)
+    reconstructed: bool = False
+
+
 class ReadingNote(BaseModel):
     answer: str
     cited_paper_ids: list[PaperId]
@@ -153,6 +169,11 @@ class ReadingPlan(BaseModel):
 class PdfImportEvent(ResearchEvent):
     paper: PdfMetadata
     pdf_path: str
+    enrich_metadata: bool = False
+    match_existing: bool = False
+    batch_id: UUID | None = None
+    batch_position: int | None = None
+    filename: str | None = None
 
 
 class ConversationMessage(BaseModel):
@@ -160,17 +181,30 @@ class ConversationMessage(BaseModel):
     timestamp: AwareDatetime
     role: Literal["user", "assistant"]
     text: str = Field(min_length=1, max_length=6000)
+    conversation_id: UUID | None = None
+    conversation_title: str | None = None
 
 
 class WeeklyReportEvent(ResearchEvent):
-    week_start: date
-    messages: list[ConversationMessage] = Field(min_length=1, max_length=250)
+    week_start: date = Field(
+        default_factory=lambda: (
+            datetime.now(ZoneInfo("Asia/Shanghai")).date() - timedelta(days=6)
+        )
+    )
+    week_end: date | None = None
+    conversation_scope: Literal["all", "library"] = "all"
+    messages: list[ConversationMessage] | None = Field(
+        default=None, min_length=1, max_length=250
+    )
 
     @model_validator(mode="after")
     def check_week(self) -> "WeeklyReportEvent":
-        if self.week_start.weekday() != 0:
-            raise ValueError("week_start must be a Monday")
-        if len({item.id for item in self.messages}) != len(self.messages):
+        self.week_end = self.week_end or self.week_start + timedelta(days=6)
+        if self.week_end < self.week_start:
+            raise ValueError("结束日期不能早于开始日期。")
+        if self.messages and len({item.id for item in self.messages}) != len(
+            self.messages
+        ):
             raise ValueError("message IDs must be unique")
         return self
 
@@ -185,14 +219,59 @@ class WeeklyReport(BaseModel):
     findings: list[WeeklyItem]
     blockers: list[WeeklyItem]
     next_week: list[WeeklyItem]
+    focus: list[WeeklyItem] = Field(default_factory=list)
+
+
+HexColor = Annotated[str, StringConstraints(pattern=r"^#[0-9a-fA-F]{6}$")]
+
+
+class PresentationTheme(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    background: HexColor = "#FFFFFF"
+    text: HexColor = "#182230"
+    accent: HexColor = "#2563EB"
+    font: Annotated[str, StringConstraints(pattern=r"^[\w -]{1,60}$")] = "Aptos"
+    chart: Literal["column", "bar", "line"] = "column"
+
+
+class MeetingSkillSummary(BaseModel):
+    id: UUID
+    name: Annotated[
+        str,
+        StringConstraints(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64),
+    ]
+    description: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)
+    ]
+    theme: PresentationTheme | None = None
+
+
+class MeetingSkill(MeetingSkillSummary):
+    instructions: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=24000)
+    ]
+    renderer: Literal["research-ppt-skill"] | None = None
+
+    @property
+    def uses_academic_layout(self) -> bool:
+        return (
+            self.renderer == "research-ppt-skill" or self.name == "research-ppt-skill"
+        )
 
 
 class MeetingEvent(SearchEvent):
-    weekly_report: str = Field(min_length=1, max_length=30000)
-    workbook_path: str
-    worksheet: str = Field(min_length=1, max_length=31)
-    category_column: str = Field(min_length=1, max_length=100)
-    value_column: str = Field(min_length=1, max_length=100)
+    weekly_report: str = Field(default="", max_length=30000)
+    workbook_path: str | None = None
+    worksheet: str | None = Field(default=None, min_length=1, max_length=31)
+    category_column: str | None = Field(default=None, min_length=1, max_length=100)
+    value_column: str | None = Field(default=None, min_length=1, max_length=100)
+    source_ids: list[PaperId] = Field(default_factory=list, max_length=10)
+    style_skill: MeetingSkill | None = None
+
+    @property
+    def uses_academic_layout(self) -> bool:
+        return self.style_skill is None or self.style_skill.uses_academic_layout
 
 
 class ExperimentPoint(BaseModel):
@@ -208,22 +287,30 @@ class ExperimentSeries(BaseModel):
     points: list[ExperimentPoint] = Field(min_length=1, max_length=100)
 
 
+MeetingSlidePurpose = Literal[
+    "overview", "progress", "background", "method", "results", "risks", "plan"
+]
+
+
 class MeetingSlide(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     bullets: list[Annotated[str, StringConstraints(max_length=240)]] = Field(
         min_length=1, max_length=4
     )
     evidence_ids: list[str] = Field(max_length=10)
+    purpose: MeetingSlidePurpose | None = None
 
 
 class MeetingOutline(BaseModel):
     title: str = Field(min_length=1, max_length=100)
     slides: list[MeetingSlide] = Field(min_length=1, max_length=8)
+    theme: PresentationTheme | None = None
 
 
 class PresentationResult(BaseModel):
     filename: str
     url: str
+    renderer: Literal["research-ppt-skill"] | None = None
 
 
 class NotionImportEvent(ResearchEvent):
@@ -232,9 +319,18 @@ class NotionImportEvent(ResearchEvent):
     keywords: Keywords = Field(default_factory=list)
     title: str = Field(min_length=1, max_length=500)
     source_url: HttpUrl
+    notion_parent: NotionParent | None = None
     markdown: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60000)
     ]
+
+
+class NotionPageImportEvent(ResearchEvent):
+    page_id: UUID
+
+
+class NotionWorkflowEvent(RootModel[NotionImportEvent | NotionPageImportEvent]):
+    pass
 
 
 class TranslationEvent(ResearchEvent):

@@ -1,10 +1,11 @@
+import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Header, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy import delete, func, select
@@ -16,12 +17,25 @@ from launchpad.database.research_deletion import (
     delete_paper,
 )
 from launchpad.database.research_paper import ResearchPaper
+from launchpad.database.research_repository import read_notion_markdown
 from launchpad.database.session import SessionLocal
 from launchpad.workflows.examples import research_workspace
 from launchpad.workflows.examples.research_workspace import config
+from launchpad.workflows.examples.research_workspace.ppt_skills import (
+    MAX_SKILL_BYTES,
+    SkillVersionConflict,
+    delete_skill,
+    get_skill,
+    list_skills,
+    save_skill,
+    skill_etag,
+    update_skill,
+)
 from launchpad.workflows.examples.research_workspace.schema import (
     Keywords,
     LibraryName,
+    MeetingSkill,
+    MeetingSkillSummary,
     PaperId,
     Publication,
 )
@@ -121,6 +135,33 @@ def remove_paper(
     return Response(status_code=204)
 
 
+class NotionNotePreview(BaseModel):
+    title: str
+    source_url: HttpUrl | None
+    markdown: str
+    reconstructed: bool = False
+
+
+@router.get("/library/{library}/notes")
+def notion_note_preview(library: LibraryName, paper_id: PaperId) -> NotionNotePreview:
+    if config.DEMO_MODE:
+        raise HTTPException(503, "当前演示模式未连接资料库。")
+    with SessionLocal() as session:
+        note = session.get(ResearchPaper, (library, paper_id))
+        if note is None or note.payload.get("source_kind") != "notion":
+            raise HTTPException(404, "找不到这篇 Notion 笔记。")
+        payload = note.payload
+        markdown, reconstructed = read_notion_markdown(
+            session, library, paper_id, payload
+        )
+        return NotionNotePreview(
+            title=payload.get("title", paper_id),
+            source_url=payload.get("source_url"),
+            markdown=markdown,
+            reconstructed=reconstructed,
+        )
+
+
 @router.delete("/library/{library}/notes", status_code=204)
 def remove_notion_note(library: LibraryName, paper_id: PaperId) -> Response:
     if config.DEMO_MODE:
@@ -155,6 +196,66 @@ def remove_notion_note(library: LibraryName, paper_id: PaperId) -> Response:
 def download_skill() -> FileResponse:
     path = WORKSPACE / "skills" / "research-reading" / "SKILL.md"
     return FileResponse(path, filename="SKILL.md", media_type="text/markdown")
+
+
+@router.get("/ppt-skills", response_model=list[MeetingSkillSummary])
+def get_ppt_skills() -> list[MeetingSkill]:
+    return list_skills()
+
+
+@router.post("/ppt-skills", status_code=201, response_model=MeetingSkillSummary)
+async def import_ppt_skill(file: UploadFile) -> MeetingSkill:
+    if not (file.filename or "").lower().endswith(".md"):
+        raise HTTPException(422, "请选择 Markdown 格式的 SKILL.md。")
+    content = await file.read(MAX_SKILL_BYTES + 1)
+    if len(content) > MAX_SKILL_BYTES:
+        raise HTTPException(413, "SKILL.md 最大为 64 KiB。")
+    try:
+        return await asyncio.to_thread(save_skill, content)
+    except ValueError as exc:
+        raise HTTPException(
+            422, "无法导入 Skill。请检查 YAML 中的 name、description、配色设置和正文。"
+        ) from exc
+
+
+@router.get("/ppt-skills/{skill_id}")
+def read_ppt_skill(skill_id: UUID, response: Response) -> MeetingSkill:
+    try:
+        skill = get_skill(skill_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "找不到该 PPT Skill。") from exc
+    response.headers["ETag"] = skill_etag(skill)
+    return skill
+
+
+@router.put("/ppt-skills/{skill_id}")
+def edit_ppt_skill(
+    skill_id: UUID,
+    skill: MeetingSkill,
+    response: Response,
+    if_match: Annotated[str | None, Header()] = None,
+) -> MeetingSkill:
+    if skill_id != skill.id:
+        raise HTTPException(422, "Skill ID 与请求地址不一致。")
+    try:
+        updated = update_skill(skill, if_match)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "找不到该 PPT Skill。") from exc
+    except SkillVersionConflict as exc:
+        raise HTTPException(
+            412, "此 Skill 已在其他页面更新，请返回列表重新打开后编辑。"
+        ) from exc
+    response.headers["ETag"] = skill_etag(updated)
+    return updated
+
+
+@router.delete("/ppt-skills/{skill_id}", status_code=204)
+def remove_ppt_skill(skill_id: UUID) -> Response:
+    try:
+        delete_skill(skill_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "找不到该 PPT Skill。") from exc
+    return Response(status_code=204)
 
 
 @router.get("/integrations")

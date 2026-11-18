@@ -5,8 +5,15 @@ from launchpad.core.nodes.base import Node
 from launchpad.core.task import TaskContext
 
 from ..library import import_papers
+from ..notion import load_notion_note
 from ..observability import stage
-from ..schema import ImportEvent, NotionImportEvent, Paper, PaperChunk
+from ..schema import (
+    ImportEvent,
+    NotionPageImportEvent,
+    NotionWorkflowEvent,
+    Paper,
+    PaperChunk,
+)
 
 
 def split_markdown(markdown: str) -> list[PaperChunk]:
@@ -35,17 +42,26 @@ class ImportNotionNode(Node):
         chunks: int
 
     async def process(self, task_context: TaskContext) -> TaskContext:
-        event: NotionImportEvent = task_context.event
+        incoming: NotionWorkflowEvent = task_context.event
+        event = incoming.root
+        if isinstance(event, NotionPageImportEvent):
+            with stage("fetch_notion_page"):
+                event = await load_notion_note(event)
         note = Paper(
             id=event.resource_id or f"notion:{event.page_id or uuid4()}",
             title=event.title,
             source_kind="notion",
             source_url=event.source_url,
+            notion_parent=event.notion_parent,
             keywords=event.keywords,
         )
         with stage("split_markdown") as metrics:
             chunks = split_markdown(event.markdown)
             metrics["chunks"] = len(chunks)
-        await import_papers(ImportEvent(library=event.library, papers=[note]), chunks)
+        await import_papers(
+            ImportEvent(library=event.library, papers=[note]),
+            chunks,
+            notion_markdown=event.markdown,
+        )
         self.save_output(self.OutputType(note_id=note.id, chunks=len(chunks)))
         return task_context

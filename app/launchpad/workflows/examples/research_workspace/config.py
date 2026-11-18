@@ -33,10 +33,13 @@ EMBEDDING_DIMENSIONS = 1024
 
 EXTERNAL_MCP_URL = os.getenv("RESEARCH_EXTERNAL_MCP_URL")
 EXTERNAL_MCP_TOOL = os.getenv("RESEARCH_EXTERNAL_MCP_TOOL")
+NOTION_TOKEN = (os.getenv("RESEARCH_NOTION_TOKEN") or "").strip()
 PPT_MCP_URL = os.getenv("RESEARCH_PPT_MCP_URL")
-PPT_OUTPUT_DIR = os.getenv("RESEARCH_PPT_OUTPUT_DIR", "/tmp/launchpad-research-decks")
 UPLOAD_DIR = Path(
     os.getenv("RESEARCH_UPLOAD_DIR")
     or Path(__file__).resolve().parents[5] / "data" / "research-uploads"
 ).resolve()
+PPT_OUTPUT_DIR = os.getenv("RESEARCH_PPT_OUTPUT_DIR") or str(
+    UPLOAD_DIR.parent / "research-decks"
+)
 API_URL = os.getenv("RESEARCH_API_URL", "http://127.0.0.1:8080")

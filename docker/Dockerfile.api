@@ -2,6 +2,13 @@ ARG LAUNCHPAD_PYTHON_IMAGE=python:3.13.13-slim-bookworm
 FROM ${LAUNCHPAD_PYTHON_IMAGE}
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
+ARG LAUNCHPAD_PPT_PREVIEW=0
+RUN if [ "$LAUNCHPAD_PPT_PREVIEW" = "1" ]; then \
+        apt-get update \
+        && apt-get install -y --no-install-recommends libreoffice-impress fonts-noto-cjk \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 

@@ -1,15 +1,17 @@
+import logging
 from contextlib import contextmanager
 from datetime import datetime
+from uuid import UUID
 
 from launchpad.database.event import Event
 from launchpad.database.repository import GenericRepository
 from launchpad.database.session import db_session
 from launchpad.worker.config import celery_app
-from launchpad.workflows.workflow_registry import WorkflowRegistry
 from launchpad.workflows.examples.research_workspace.observability import (
     TaskMonitor,
     stage,
 )
+from launchpad.workflows.workflow_registry import WorkflowRegistry
 
 """
 Workflow Task Processing Module
@@ -75,3 +77,21 @@ def process_incoming_event(event_id: str):
 
         # Update event with processing results
         repository.update(obj=db_event)
+
+
+@celery_app.task(
+    name="process_research_pdf_batch", acks_late=True, reject_on_worker_lost=True
+)
+def process_research_pdf_batch(run_ids: list[str]) -> None:
+    from launchpad.workflows.examples.research_workspace.jobs import get_job
+
+    for event_id in run_ids:
+        job = get_job(UUID(event_id))
+        if job is None or job.status == "completed":
+            continue
+        try:
+            process_incoming_event(event_id)
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "research_batch_paper_failed", extra={"run_id": event_id}
+            )

@@ -15,9 +15,11 @@ from sqlalchemy import update
 from sqlalchemy.exc import SQLAlchemyError
 
 from launchpad.database.event import Event
+from launchpad.database.research_repository import MeetingSourceUnavailable
 from launchpad.database.session import SessionLocal
 
 from . import config
+from .notion import NotionError
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +35,10 @@ STEP_LABELS = {
     "ImportPapersNode": "导入论文摘要",
     "parse_pdf": "解析 PDF 并切片",
     "paper_title": "提取论文原题与摘要",
+    "paper_keywords": "按论文标题生成中文关键词",
     "publication": "核对论文发表渠道与等级",
     "split_markdown": "解析笔记并切片",
+    "fetch_notion_page": "从 Notion 读取页面",
     "embed_documents": "生成文档向量",
     "store_documents": "写入 PostgreSQL",
     "PlanRetrievalNode": "分析问题与规划检索",
@@ -44,10 +48,13 @@ STEP_LABELS = {
     "WriteReadingNoteNode": "生成回答与原文引用",
     "external_tool": "调用外部检索 MCP",
     "WriteWeeklyReportNode": "生成科研周报",
+    "ReadWeeklyConversationsNode": "读取会话记录",
     "filter_weekly_messages": "筛选本周对话",
-    "draft_weekly_report": "提炼进展与发现",
+    "draft_weekly_report": "按日期提炼进展与研究关注",
     "format_weekly_report": "生成 Markdown 周报",
     "ReadExperimentsNode": "读取 Excel 实验数据",
+    "ReadMeetingNotesNode": "按 ID 读取所选资料",
+    "MeetingMaterialsRouter": "选择资料处理方式",
     "PlanMeetingNode": "生成组会大纲",
     "RenderMeetingNode": "调用 PPT MCP 并生成文件",
     "save_result": "保存任务结果",
@@ -76,6 +83,8 @@ class TaskProgress(BaseModel):
 
 
 def failure_reason(exc: Exception, key: str) -> str:
+    if isinstance(exc, (NotionError, MeetingSourceUnavailable)):
+        return str(exc)
     if isinstance(exc, (httpx.HTTPStatusError, ModelHTTPError)):
         status = (
             exc.response.status_code

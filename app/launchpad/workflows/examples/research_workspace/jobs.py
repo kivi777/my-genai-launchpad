@@ -34,6 +34,19 @@ class ResearchJob(BaseModel):
     steps: list[TaskStep] = Field(default_factory=list)
     outputs: dict | None = None
     message: str | None = None
+    created_at: datetime | None = None
+    title: str | None = None
+    skill_name: str | None = None
+
+
+class PdfBatchItem(BaseModel):
+    filename: str
+    job: ResearchJob
+
+
+class PdfBatch(BaseModel):
+    batch_id: UUID
+    items: list[PdfBatchItem]
 
 
 class DispatchError(RuntimeError):
@@ -65,7 +78,9 @@ def submit_job(
             paper = request.paper.model_copy(
                 update={"id": next_resource_id(session, request.library)}
             )
-            request = request.model_copy(update={"paper": paper})
+            request = request.model_copy(
+                update={"paper": paper, "match_existing": True}
+            )
         if isinstance(request, NotionImportEvent) and request.page_id is None:
             request = request.model_copy(
                 update={"resource_id": next_resource_id(session, request.library)}
@@ -175,6 +190,66 @@ def get_job(run_id: UUID, *, library: str | None = None) -> ResearchJob | None:
         return job_from_event(event)
 
 
+def submit_pdf_batch(batch_id: UUID, requests: list[PdfImportEvent]) -> PdfBatch:
+    with SessionLocal.begin() as session:
+        for request in requests:
+            paper = request.paper.model_copy(
+                update={"id": next_resource_id(session, request.library)}
+            )
+            session.add(
+                Event(
+                    id=paper.pdf_run_id,
+                    workflow_type=WorkflowRegistry.RESEARCH_PDF.name,
+                    research_progress={"status": "queued"},
+                    data=request.model_copy(update={"paper": paper}).model_dump(
+                        mode="json"
+                    ),
+                )
+            )
+
+    run_ids = [str(request.paper.pdf_run_id) for request in requests]
+    try:
+        celery_app.send_task(
+            "process_research_pdf_batch", args=[run_ids], task_id=str(batch_id)
+        )
+    except Exception:
+        with SessionLocal.begin() as session:
+            session.execute(
+                update(Event)
+                .where(
+                    Event.id.in_([request.paper.pdf_run_id for request in requests]),
+                    Event.research_progress["status"].as_string() == "queued",
+                )
+                .values(
+                    research_progress=TaskProgress(
+                        status="failed",
+                        failed_step=STEP_LABELS["dispatch"],
+                        message="无法确认 Redis 已接收批量导入任务。",
+                    ).model_dump(mode="json", exclude_none=True)
+                )
+            )
+    batch = get_pdf_batch(batch_id)
+    assert batch is not None
+    return batch
+
+
+def get_pdf_batch(batch_id: UUID) -> PdfBatch | None:
+    with SessionLocal() as session:
+        events = session.scalars(
+            select(Event)
+            .where(
+                Event.workflow_type == WorkflowRegistry.RESEARCH_PDF.name,
+                Event.data["batch_id"].as_string() == str(batch_id),
+            )
+            .order_by(Event.data["batch_position"].as_integer())
+        )
+        items = [
+            PdfBatchItem(filename=event.data["filename"], job=job_from_event(event))
+            for event in events
+        ]
+    return PdfBatch(batch_id=batch_id, items=items) if items else None
+
+
 def recent_jobs(library: str, workflow: WorkflowRegistry) -> list[ResearchJob]:
     with SessionLocal() as session:
         events = session.scalars(
@@ -182,14 +257,35 @@ def recent_jobs(library: str, workflow: WorkflowRegistry) -> list[ResearchJob]:
             .where(
                 Event.workflow_type == workflow.name,
                 Event.data["library"].as_string() == library,
+                Event.data["batch_id"].as_string().is_(None),
             )
             .order_by(Event.created_at.desc(), Event.id.desc())
             .limit(15)
         )
-        return [
-            job_from_event(event).model_copy(update={"outputs": None})
-            for event in events
-        ]
+        records = []
+        for event in events:
+            job = job_from_event(event)
+            summary = {"outputs": None}
+            if workflow is WorkflowRegistry.RESEARCH_MEETING:
+                outputs = job.outputs or {}
+                deck = outputs.get("RenderMeetingNode")
+                summary.update(
+                    outputs={"RenderMeetingNode": deck} if deck else None,
+                    created_at=event.created_at,
+                    title=(outputs.get("PlanMeetingNode") or {}).get("title")
+                    or event.data["query"][:100],
+                    skill_name=(event.data.get("style_skill") or {}).get("name")
+                    or (deck or {}).get("renderer"),
+                )
+            elif workflow is WorkflowRegistry.RESEARCH_WEEKLY:
+                report = (job.outputs or {}).get("WriteWeeklyReportNode")
+                summary.update(
+                    outputs={"WriteWeeklyReportNode": report} if report else None,
+                    created_at=event.created_at,
+                    title=(report or {}).get("title") or "科研周报",
+                )
+            records.append(job.model_copy(update=summary))
+        return records
 
 
 def celery_state(run_id: UUID) -> str | None:
@@ -211,7 +307,8 @@ def job_from_event(event: Event) -> ResearchJob:
         ):
             progress.status = "completed"
         if progress.status in {"queued", "running"} and context is None:
-            state = celery_state(run_id)
+            batch_id = event.data.get("batch_id")
+            state = celery_state(batch_id or run_id)
             if state in {"FAILURE", "REVOKED"}:
                 active = next(
                     (

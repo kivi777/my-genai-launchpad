@@ -4,21 +4,48 @@ from pathlib import Path
 from uuid import uuid4
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from . import config
-from .schema import ExperimentSeries, MeetingOutline, PresentationResult, SearchHit
+from .academic_ppt import render_academic_deck
+from .schema import (
+    ExperimentSeries,
+    MeetingOutline,
+    PresentationResult,
+    PresentationTheme,
+    SearchHit,
+)
 
 server = MCPServer("research-presentation")
 
 
 @server.tool()
 def render_meeting_pptx(
-    outline: MeetingOutline, experiment: ExperimentSeries, evidence: list[SearchHit]
+    outline: MeetingOutline,
+    experiment: ExperimentSeries | None,
+    evidence: list[SearchHit],
+    theme: PresentationTheme | None = None,
+    academic_layout: bool = False,
 ) -> PresentationResult:
     """Create a PowerPoint with literature citations and an editable Excel-derived chart."""
+    directory = Path(config.PPT_OUTPUT_DIR)
+    directory.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid4().hex}.pptx"
+    result = PresentationResult(filename=filename, url=f"/research/decks/{filename}")
+    if academic_layout:
+        try:
+            render_academic_deck(
+                outline, experiment, evidence, theme, directory / filename
+            )
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        return result.model_copy(update={"renderer": "research-ppt-skill"})
+
     from pptx import Presentation
     from pptx.chart.data import CategoryChartData
+    from pptx.dml.color import RGBColor
     from pptx.enum.chart import XL_CHART_TYPE
+    from pptx.enum.shapes import MSO_SHAPE
     from pptx.util import Inches, Pt
 
     deck = Presentation()
@@ -49,26 +76,35 @@ def render_meeting_pptx(
             )
             footer.text_frame.text = "文献证据 " + "  ".join(item.evidence_ids)
 
-    slide = deck.slides.add_slide(deck.slide_layouts[5])
-    slide.shapes.title.text = f"实验结果 · {experiment.value_column}"
-    chart_data = CategoryChartData()
-    chart_data.categories = [point.category for point in experiment.points]
-    chart_data.add_series(
-        experiment.value_column, [point.value for point in experiment.points]
-    )
-    slide.shapes.add_chart(
-        XL_CHART_TYPE.COLUMN_CLUSTERED,
-        Inches(1),
-        Inches(1.5),
-        Inches(11.3),
-        Inches(4.9),
-        chart_data,
-    )
-    source = slide.shapes.add_textbox(Inches(1), Inches(6.6), Inches(11.3), Inches(0.5))
-    source.text_frame.text = (
-        f"来源：工作表 {experiment.worksheet} · {experiment.category_column} / {experiment.value_column}"
-        f" · {len(experiment.points)} 条数据"
-    )
+    chart = None
+    if experiment:
+        slide = deck.slides.add_slide(deck.slide_layouts[5])
+        slide.shapes.title.text = f"实验结果 · {experiment.value_column}"
+        chart_data = CategoryChartData()
+        chart_data.categories = [point.category for point in experiment.points]
+        chart_data.add_series(
+            experiment.value_column, [point.value for point in experiment.points]
+        )
+        chart_types = {
+            "column": XL_CHART_TYPE.COLUMN_CLUSTERED,
+            "bar": XL_CHART_TYPE.BAR_CLUSTERED,
+            "line": XL_CHART_TYPE.LINE_MARKERS,
+        }
+        chart = slide.shapes.add_chart(
+            chart_types[theme.chart if theme else "column"],
+            Inches(1),
+            Inches(1.5),
+            Inches(11.3),
+            Inches(4.9),
+            chart_data,
+        ).chart
+        source = slide.shapes.add_textbox(
+            Inches(1), Inches(6.6), Inches(11.3), Inches(0.5)
+        )
+        source.text_frame.text = (
+            f"来源：工作表 {experiment.worksheet} · {experiment.category_column} / {experiment.value_column}"
+            f" · {len(experiment.points)} 条数据"
+        )
 
     for start in range(0, len(evidence), 5):
         slide = deck.slides.add_slide(deck.slide_layouts[5])
@@ -93,11 +129,42 @@ def render_meeting_pptx(
             run.font.size = Pt(16)
             paragraph.space_after = Pt(11)
 
-    directory = Path(config.PPT_OUTPUT_DIR)
-    directory.mkdir(parents=True, exist_ok=True)
-    filename = f"{uuid4().hex}.pptx"
+    if theme:
+        background = RGBColor.from_string(theme.background[1:])
+        text_color = RGBColor.from_string(theme.text[1:])
+        accent = RGBColor.from_string(theme.accent[1:])
+        for slide in deck.slides:
+            fill = slide.background.fill
+            fill.solid()
+            fill.fore_color.rgb = background
+            stripe = slide.shapes.add_shape(
+                MSO_SHAPE.RECTANGLE, 0, 0, deck.slide_width, Inches(0.08)
+            )
+            stripe.fill.solid()
+            stripe.fill.fore_color.rgb = accent
+            stripe.line.fill.background()
+            for shape in slide.shapes:
+                if not shape.has_text_frame:
+                    continue
+                for paragraph in shape.text_frame.paragraphs:
+                    paragraph.font.name = theme.font
+                    paragraph.font.color.rgb = text_color
+                    for run in paragraph.runs:
+                        run.font.name = theme.font
+                        run.font.color.rgb = text_color
+        if chart is not None:
+            series_format = chart.series[0].format
+            if theme.chart == "line":
+                series_format.line.color.rgb = accent
+            else:
+                series_format.fill.solid()
+                series_format.fill.fore_color.rgb = accent
+            for axis in (chart.category_axis, chart.value_axis):
+                axis.tick_labels.font.name = theme.font
+                axis.tick_labels.font.color.rgb = text_color
+
     deck.save(directory / filename)
-    return PresentationResult(filename=filename, url=f"/research/decks/{filename}")
+    return result
 
 
 if __name__ == "__main__":
